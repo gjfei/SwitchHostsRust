@@ -9,7 +9,8 @@ use switch_hosts_core::storage::trashcan::Trashcan;
 use eframe::egui;
 
 use crate::panels::{
-    draw_activity_bar, draw_details, draw_editor, draw_preferences, draw_trash, draw_tree,
+    draw_activity_bar, draw_details, draw_editor, draw_find_replace, draw_preferences,
+    draw_trash, draw_tree, FindReplaceState,
 };
 
 pub struct SwitchHostsApp {
@@ -24,6 +25,8 @@ pub struct SwitchHostsApp {
     test_mode: bool,
     status_message: Option<String>,
     show_preferences: bool,
+    show_find_replace: bool,
+    find_replace: FindReplaceState,
 }
 
 impl SwitchHostsApp {
@@ -44,6 +47,8 @@ impl SwitchHostsApp {
             test_mode,
             status_message: None,
             show_preferences: false,
+            show_find_replace: false,
+            find_replace: FindReplaceState::default(),
         }
     }
 
@@ -90,12 +95,30 @@ impl eframe::App for SwitchHostsApp {
                 if ui.button("偏好设置").clicked() {
                     self.show_preferences = true;
                 }
+                if ui.button("查找 / 替换").clicked() {
+                    self.show_find_replace = true;
+                }
             });
         });
 
         if draw_preferences(ctx, &mut self.show_preferences, &mut self.config) {
             let _ = self.config.save(&self.paths.config_file);
             self.status_message = Some("偏好设置已保存".into());
+        }
+
+        if draw_find_replace(
+            ctx,
+            &mut self.show_find_replace,
+            &mut self.find_replace,
+            &mut self.config,
+            &self.manifest,
+            &self.paths,
+        ) {
+            self.reload_editor();
+            self.status_message = Some(format!(
+                "已替换 {} 处",
+                self.find_replace.last_count
+            ));
         }
 
         egui::SidePanel::left("tree_panel")
