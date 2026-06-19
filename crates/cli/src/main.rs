@@ -11,12 +11,15 @@ struct Cli {
     /// 写入系统 hosts 文件（/etc/hosts）
     #[arg(long, global = true)]
     system: bool,
+
     /// 自定义 hosts 文件路径
     #[arg(long, global = true)]
     hosts_file: Option<std::path::PathBuf>,
+
     /// 覆盖数据目录根路径
     #[arg(long, global = true, env = "SWITCH_HOSTS_RUST_DATA_DIR")]
     data_dir: Option<std::path::PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -29,6 +32,14 @@ enum Commands {
     Toggle { id: String },
     /// 将选中方案写入 hosts 文件
     Apply,
+    /// 导出 v5 JSON 备份到 stdout
+    Export,
+    /// 从文件导入 v5 JSON 备份
+    Import { file: std::path::PathBuf },
+    /// 从 live v5 数据目录导入
+    ImportDir { source: std::path::PathBuf },
+    /// 启动本地 HTTP API 服务
+    Serve,
 }
 
 fn resolve_paths(data_dir: Option<std::path::PathBuf>) -> Result<AppPaths> {
@@ -40,19 +51,28 @@ fn resolve_paths(data_dir: Option<std::path::PathBuf>) -> Result<AppPaths> {
     Ok(paths)
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
+
     let cli = Cli::parse();
     let paths = resolve_paths(cli.data_dir)?;
     let target = switch_hosts_core::hosts_apply::HostsTarget::resolve(
-        &paths, cli.system, cli.hosts_file,
+        &paths,
+        cli.system,
+        cli.hosts_file,
     );
+
     match cli.command {
         Commands::List => commands::list(&paths)?,
         Commands::Toggle { id } => commands::toggle(&paths, &target, &id)?,
         Commands::Apply => commands::apply(&paths, &target)?,
+        Commands::Export => commands::export_backup(&paths)?,
+        Commands::Import { file } => commands::import_backup(&paths, &file)?,
+        Commands::ImportDir { source } => commands::import_dir(&paths, &source)?,
+        Commands::Serve => commands::serve(&paths, target).await?,
     }
     Ok(())
 }

@@ -46,3 +46,43 @@ fn list_toggle_apply_flow() {
     let content = std::fs::read_to_string(&hosts_out).unwrap();
     assert!(content.contains("cli.test"));
 }
+
+#[test]
+fn export_import_round_trip() {
+    let tmp = TempDir::new().unwrap();
+    let paths = AppPaths::new(tmp.path().join("data"));
+    paths.ensure_layout().unwrap();
+    entries::write_entry(&paths.entries_dir, "1", "127.0.0.1 export.test\n").unwrap();
+    let manifest = Manifest {
+        root: json!([{ "id": "1", "type": "local", "title": "Export", "on": true }])
+            .as_array()
+            .cloned()
+            .unwrap(),
+        ..Default::default()
+    };
+    manifest.save(&paths).unwrap();
+
+    let backup_file = tmp.path().join("backup.json");
+    let export_output = cli_cmd(tmp.path().join("data").as_path(), tmp.path().join("out.hosts").as_path())
+        .arg("export")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    std::fs::write(&backup_file, &export_output).unwrap();
+    assert!(String::from_utf8_lossy(&export_output).contains("switchhosts-backup"));
+
+    let import_dir = tmp.path().join("imported");
+    cli_cmd(import_dir.as_path(), tmp.path().join("out2.hosts").as_path())
+        .arg("import")
+        .arg(&backup_file)
+        .assert()
+        .success();
+
+    let imported_paths = AppPaths::new(import_dir);
+    let imported = Manifest::load(&imported_paths).unwrap();
+    assert_eq!(imported.root[0]["id"], "1");
+    let content = entries::read_entry(&imported_paths.entries_dir, "1").unwrap();
+    assert!(content.contains("export.test"));
+}
