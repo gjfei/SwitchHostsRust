@@ -2,6 +2,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use chrono::{Local, TimeZone};
 use serde_json::json;
 use service::{fetch_url, ClientConfig};
 use switch_hosts_core::storage::config::AppConfig;
@@ -53,14 +54,25 @@ fn touch_last_refresh(manifest: &mut Manifest, id: &str) {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    touch_last_refresh_recursive(&mut manifest.root, id, ms);
+    let stamp = Local
+        .timestamp_millis_opt(ms as i64)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default();
+    touch_last_refresh_recursive(&mut manifest.root, id, ms, &stamp);
 }
 
-fn touch_last_refresh_recursive(nodes: &mut [serde_json::Value], id: &str, ms: u64) -> bool {
+fn touch_last_refresh_recursive(
+    nodes: &mut [serde_json::Value],
+    id: &str,
+    ms: u64,
+    stamp: &str,
+) -> bool {
     for node in nodes.iter_mut() {
         if node.get("id").and_then(|v| v.as_str()) == Some(id) {
             if let Some(obj) = node.as_object_mut() {
                 obj.insert("last_refresh_ms".into(), json!(ms));
+                obj.insert("last_refresh".into(), json!(stamp));
             }
             return true;
         }
@@ -69,7 +81,7 @@ fn touch_last_refresh_recursive(nodes: &mut [serde_json::Value], id: &str, ms: u
             .and_then(|o| o.get_mut("children"))
             .and_then(|c| c.as_array_mut())
         {
-            if touch_last_refresh_recursive(children, id, ms) {
+            if touch_last_refresh_recursive(children, id, ms, stamp) {
                 return true;
             }
         }

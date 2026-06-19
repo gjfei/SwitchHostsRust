@@ -7,8 +7,10 @@ use switch_hosts_core::toggle::toggle_item;
 use eframe::egui::{self, Sense, Ui, Vec2};
 use serde_json::{json, Value};
 
+use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::widgets::{ellipsize_text, toggle_switch_at};
+use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
     ACCENT, SIDEBAR_BG, SWITCH_HEIGHT, SWITCH_WIDTH, TREE_FONT_SIZE, TREE_INDENT,
     TREE_INDENT_PAD, TREE_ROW_GAP, TREE_ROW_HEIGHT, TREE_ROW_RADIUS, TREE_STATUS_GAP,
@@ -271,15 +273,16 @@ fn render_row(
             egui::pos2(x, rect.top()),
             egui::pos2(title_right.max(x), rect.bottom()),
         );
-        let font_id = egui::FontId::proportional(TREE_FONT_SIZE);
+        let font_id = ui_font_id(TREE_FONT_SIZE);
         let display_title = ellipsize_text(ui, &title, font_id.clone(), title_rect.width());
-        ui.painter().with_clip_rect(title_rect).text(
-            egui::pos2(x, cy),
-            egui::Align2::LEFT_CENTER,
+        let galley = text_align::layout_vcentered_galley(
+            ui,
             display_title,
             font_id,
             text_color,
+            ICON_ROW_LINE_HEIGHT,
         );
+        text_align::paint_galley_row_centered_clipped(ui, title_rect, x, cy, galley, text_color);
 
         if !is_system {
             if is_selected {

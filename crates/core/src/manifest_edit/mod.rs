@@ -63,6 +63,8 @@ pub struct HostsNodeDraft {
     pub title: String,
     pub url: String,
     pub refresh_interval: u64,
+    pub last_refresh: Option<String>,
+    pub last_refresh_ms: Option<u64>,
     pub include: Vec<String>,
     pub folder_mode: u8,
 }
@@ -75,6 +77,8 @@ impl Default for HostsNodeDraft {
             title: String::new(),
             url: String::new(),
             refresh_interval: 0,
+            last_refresh: None,
+            last_refresh_ms: None,
             include: Vec::new(),
             folder_mode: 0,
         }
@@ -102,6 +106,13 @@ impl HostsNodeDraft {
                 .get("refresh_interval")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0),
+            last_refresh: node
+                .get("last_refresh")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            last_refresh_ms: node
+                .get("last_refresh_ms")
+                .and_then(|v| v.as_u64()),
             include: node
                 .get("include")
                 .and_then(|v| v.as_array())
@@ -159,7 +170,7 @@ impl HostsNodeDraft {
 
 /// 远程 hosts 自动刷新间隔选项（秒），对齐原版 Select 数据。
 pub const REFRESH_INTERVALS: &[(u64, &str)] = &[
-    (0, "不刷新"),
+    (0, "从不"),
     (60, "1 分钟"),
     (300, "5 分钟"),
     (900, "15 分钟"),

@@ -27,6 +27,9 @@ pub const EDITOR_IP: Color32 = Color32::from_rgb(9, 109, 217);
 pub const EDITOR_ERROR: Color32 = Color32::from_rgb(204, 51, 102);
 pub const EDITOR_LINE_NUMBER: Color32 = Color32::from_rgb(153, 153, 153);
 
+/// CodeMirror light 主题聚焦选区 `.cm-selectionBackground`（`@codemirror/view` base theme）
+pub const TEXT_SELECTION_BG: Color32 = Color32::from_rgb(215, 212, 240);
+
 pub const EDITOR_FONT_SIZE: f32 = 14.0;
 pub const EDITOR_LINE_HEIGHT: f32 = 25.2; // 14px * 1.8
 
@@ -84,6 +87,23 @@ pub const TRASH_BODY_PAD_Y: f32 = 5.0;
 pub const TRASH_CLEAR_ICON: f32 = 16.0;
 pub const TRASH_CLEAR_HIT: f32 = 24.0;
 
+/// SideDrawer `size="lg"` + Mantine spacing
+pub const DRAWER_WIDTH: f32 = 440.0;
+/// Mantine Drawer `offset: 8`
+pub const DRAWER_OFFSET: f32 = 8.0;
+/// Mantine Drawer `radius: 'md'`
+pub const DRAWER_RADIUS: f32 = 8.0;
+pub const DRAWER_PAD: f32 = 16.0;
+pub const DRAWER_HEADER_HEIGHT: f32 = 56.0;
+pub const DRAWER_FOOTER_HEIGHT: f32 = 68.0;
+pub const DRAWER_SECTION_GAP: f32 = 20.0;
+pub const DRAWER_LABEL_GAP: f32 = 8.0;
+pub const DRAWER_INPUT_RADIUS: f32 = 4.0;
+pub const DRAWER_WEAK_TEXT: Color32 = Color32::from_rgb(153, 153, 153);
+pub const DRAWER_BORDER: Color32 = SEPARATOR;
+pub const DRAWER_INPUT_BORDER: Color32 = Color32::from_rgb(222, 226, 230);
+pub const DRAWER_SEGMENTED_BG: Color32 = TOP_BAR_ICON_HOVER;
+
 /// 列表字体 body `0.875rem` @ 16px root
 pub const TREE_FONT_SIZE: f32 = 14.0;
 /// `--swh-tree-row-height: 2em`
@@ -114,8 +134,8 @@ pub fn setup_light_theme(ctx: &egui::Context) {
     visuals.widgets.inactive.bg_fill = Color32::WHITE;
     visuals.widgets.hovered.bg_fill = TREE_HOVER;
     visuals.widgets.active.bg_fill = ACCENT;
-    visuals.selection.bg_fill = ACCENT;
-    visuals.selection.stroke = Stroke::NONE;
+    visuals.selection.bg_fill = TEXT_SELECTION_BG;
+    visuals.selection.stroke = Stroke::new(1.0, Color32::from_rgb(0, 83, 125));
     visuals.window_corner_radius = CornerRadius::same(4);
     ctx.set_visuals(visuals);
 }

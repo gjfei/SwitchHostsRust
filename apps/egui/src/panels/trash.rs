@@ -1,10 +1,12 @@
 //! 回收站列表（对齐 `LeftPanel/Trashcan` + `TrashcanItem` + `List` 行样式）。
 
 use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
-use eframe::egui::{self, Color32, FontId, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, Sense, Stroke, Ui, Vec2};
 
+use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::widgets::ellipsize_text;
+use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
     ACCENT, SEPARATOR, SIDEBAR_BG, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS, TRASH_BODY_PAD_Y, TRASH_CLEAR_HIT, TRASH_CLEAR_ICON, TRASH_HEADER_FONT_SIZE,
     TRASH_HEADER_HEIGHT, TRASH_HEADER_PAD_X, TRASH_HEADER_TEXT, TREE_FONT_SIZE, TREE_HOVER,
@@ -78,11 +80,18 @@ fn draw_trash_header(ui: &mut Ui, is_empty: bool) -> Option<TrashEvent> {
     );
 
     let title_x = rect.left() + TRASH_HEADER_PAD_X;
-    ui.painter().text(
-        egui::pos2(title_x, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        "回收站",
-        FontId::proportional(TRASH_HEADER_FONT_SIZE),
+    let title_galley = text_align::layout_vcentered_galley(
+        ui,
+        "回收站".to_string(),
+        ui_font_id(TRASH_HEADER_FONT_SIZE),
+        TRASH_HEADER_TEXT,
+        ICON_ROW_LINE_HEIGHT,
+    );
+    text_align::paint_galley_row_centered(
+        ui,
+        title_x,
+        rect.center().y,
+        title_galley,
         TRASH_HEADER_TEXT,
     );
 
@@ -215,15 +224,16 @@ fn draw_trash_row(
             egui::pos2(x, rect.top()),
             egui::pos2(rect.right(), rect.bottom()),
         );
-        let font_id = FontId::proportional(TREE_FONT_SIZE);
+        let font_id = ui_font_id(TREE_FONT_SIZE);
         let display_title = ellipsize_text(ui, &title, font_id.clone(), title_rect.width());
-        ui.painter().with_clip_rect(title_rect).text(
-            egui::pos2(x, cy),
-            egui::Align2::LEFT_CENTER,
+        let galley = text_align::layout_vcentered_galley(
+            ui,
             display_title,
             font_id,
             text_color,
+            ICON_ROW_LINE_HEIGHT,
         );
+        text_align::paint_galley_row_centered_clipped(ui, title_rect, x, cy, galley, text_color);
     }
 
     let mut event = None;

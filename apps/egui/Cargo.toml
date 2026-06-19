@@ -20,6 +20,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 switch-hosts-core.workspace = true
 tokio.workspace = true
+chrono.workspace = true
 service.workspace = true
 eframe.workspace = true
 egui.workspace = true

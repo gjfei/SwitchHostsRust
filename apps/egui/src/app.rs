@@ -91,8 +91,9 @@ impl SwitchHostsApp {
         if self.config.use_system_window_frame || self.traffic_lights_positioned {
             return;
         }
-        crate::macos::position_traffic_lights(handle);
-        self.traffic_lights_positioned = true;
+        if crate::macos::position_traffic_lights(handle) {
+            self.traffic_lights_positioned = true;
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -321,14 +322,11 @@ impl eframe::App for SwitchHostsApp {
         }
 
         // 顶栏必须最先绘制（标题栏 overlay 区域），再绘制其下方的测试横幅。
+        // 顶栏对齐原版 `background: transparent`，避免 egui 不透明填充盖住 macOS 交通灯。
         egui::TopBottomPanel::top("top_bar")
             .exact_height(TOP_BAR_HEIGHT)
             .show_separator_line(false)
-            .frame(
-                egui::Frame::new()
-                    .fill(theme::TOP_BAR_BG)
-                    .inner_margin(0.0),
-            )
+            .frame(top_bar_frame(&self.config))
             .show(ctx, |ui| {
                 let action = draw_top_bar(
                     ui,
@@ -483,6 +481,7 @@ impl eframe::App for SwitchHostsApp {
             &mut self.edit_hosts,
             &mut self.manifest,
             &self.paths,
+            &self.config,
         ) {
             EditHostsResult::Saved { id } => {
                 self.selected_id = Some(id);
@@ -537,6 +536,15 @@ impl eframe::App for SwitchHostsApp {
             }
         }
     }
+}
+
+fn top_bar_frame(config: &AppConfig) -> egui::Frame {
+    let fill = if cfg!(target_os = "macos") && !config.use_system_window_frame {
+        egui::Color32::TRANSPARENT
+    } else {
+        theme::TOP_BAR_BG
+    };
+    egui::Frame::new().fill(fill).inner_margin(0.0)
 }
 
 /// 从 manifest 构建托盘菜单标签（单元测试用，无需原生托盘 API）。

@@ -2,10 +2,14 @@
 
 use switch_hosts_core::manifest_edit::is_editor_read_only;
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
-use eframe::egui::{RichText, Stroke, Ui};
+use eframe::egui::{Stroke, Ui};
 
+use crate::fonts::ui_font_id;
 use crate::panels::widgets::format_bytes;
+use crate::text_align;
 use crate::theme::{EDITOR_LINE_NUMBER, SEPARATOR, STATUS_BAR_HEIGHT};
+
+const STATUS_TEXT_LINE_HEIGHT: f32 = 12.0;
 
 pub struct EditorStatus {
     pub line_count: usize,
@@ -39,23 +43,30 @@ pub fn draw_status_bar(ui: &mut Ui, status: &EditorStatus) {
     ui.painter()
         .hline(rect.x_range(), rect.top(), Stroke::new(1.0, SEPARATOR));
 
-    ui.horizontal(|ui| {
-        ui.add_space(10.0);
-        ui.label(
-            RichText::new(format!(
-                "{} 行  {}",
-                status.line_count,
-                format_bytes(status.bytes)
-            ))
-            .size(10.0)
-            .color(EDITOR_LINE_NUMBER),
+    let cy = rect.center().y;
+    let font = ui_font_id(10.0);
+    let mut x = rect.left() + 10.0;
+
+    let main = format!("{} 行  {}", status.line_count, format_bytes(status.bytes));
+    let galley = text_align::layout_vcentered_galley(
+        ui,
+        main,
+        font.clone(),
+        EDITOR_LINE_NUMBER,
+        STATUS_TEXT_LINE_HEIGHT,
+    );
+    let main_w = galley.size().x;
+    text_align::paint_galley_row_centered(ui, x, cy, galley, EDITOR_LINE_NUMBER);
+    x += main_w;
+
+    if status.read_only && status.line_count > 0 {
+        let ro = text_align::layout_vcentered_galley(
+            ui,
+            " · 只读".to_string(),
+            font,
+            EDITOR_LINE_NUMBER,
+            STATUS_TEXT_LINE_HEIGHT,
         );
-        if status.read_only && status.line_count > 0 {
-            ui.label(
-                RichText::new(" · 只读")
-                    .size(10.0)
-                    .color(EDITOR_LINE_NUMBER),
-            );
-        }
-    });
+        text_align::paint_galley_row_centered(ui, x, cy, ro, EDITOR_LINE_NUMBER);
+    }
 }

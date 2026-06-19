@@ -6,6 +6,7 @@ pub mod lifecycle;
 pub mod macos;
 pub mod panels;
 pub mod remote_refresh;
+pub mod text_align;
 pub mod theme;
 pub mod tray;
 pub mod tray_native;

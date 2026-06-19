@@ -5,8 +5,10 @@ use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use switch_hosts_core::toggle::toggle_item;
 use eframe::egui::{self, Align2, Color32, FontId, PointerButton, Sense, Ui, Vec2, ViewportCommand};
 
+use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::widgets::toggle_switch;
+use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
     TOP_BAR_CLUSTER_WIDTH, TOP_BAR_HEIGHT, TOP_BAR_ICON_HIT, TOP_BAR_ICON_HOVER,
     TOP_BAR_ICON_RADIUS, TOP_BAR_MAC_PAD_LEFT, TOP_BAR_PAD_X,
@@ -169,15 +171,23 @@ fn paint_centered_title(
     }
 
     let text_color = Color32::from_rgb(30, 30, 35);
-    let font_id = FontId::proportional(TITLE_FONT_SIZE);
+    let font_id = ui_font_id(TITLE_FONT_SIZE);
     let painter = ui.painter();
 
-    let title_galley = painter.layout_no_wrap(title.clone(), font_id.clone(), text_color);
+    let title_galley = text_align::layout_vcentered_galley(
+        ui,
+        title.clone(),
+        font_id.clone(),
+        text_color,
+        ICON_ROW_LINE_HEIGHT,
+    );
     let readonly_galley = if read_only {
-        Some(painter.layout_no_wrap(
+        Some(text_align::layout_vcentered_galley(
+            ui,
             "只读".to_string(),
-            FontId::proportional(READONLY_BADGE_FONT_SIZE),
+            ui_font_id(READONLY_BADGE_FONT_SIZE),
             Color32::from_rgb(120, 120, 130),
+            ICON_ROW_LINE_HEIGHT,
         ))
     } else {
         None
@@ -198,7 +208,10 @@ fn paint_centered_title(
     x += Icon::DEFAULT_SIZE + CLUSTER_GAP;
 
     painter.galley(
-        egui::pos2(x, y - title_galley.size().y / 2.0),
+        egui::pos2(
+            x,
+            text_align::galley_top_y_at_center(&title_galley, y),
+        ),
         title_galley,
         text_color,
     );
@@ -218,7 +231,10 @@ fn paint_centered_title(
             Color32::from_rgb(233, 233, 236),
         );
         painter.galley(
-            badge_rect.min + egui::vec2(4.0, 2.0),
+            egui::pos2(
+                badge_rect.min.x + 4.0,
+                text_align::galley_top_y_at_center(&badge_galley, badge_rect.center().y),
+            ),
             badge_galley,
             Color32::from_rgb(120, 120, 130),
         );

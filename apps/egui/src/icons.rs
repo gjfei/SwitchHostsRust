@@ -125,6 +125,8 @@ pub enum Icon {
     FolderOpen,
     Trash,
     TrashX,
+    ArrowLeft,
+    ArrowRight,
     List,
     Search,
     History,
@@ -155,6 +157,8 @@ impl Icon {
             Self::FolderOpen => egui::include_image!("../assets/icons/folder-open.svg"),
             Self::Trash => egui::include_image!("../assets/icons/trash.svg"),
             Self::TrashX => egui::include_image!("../assets/icons/trash-x.svg"),
+            Self::ArrowLeft => egui::include_image!("../assets/icons/arrow-left.svg"),
+            Self::ArrowRight => egui::include_image!("../assets/icons/arrow-right.svg"),
             Self::List => egui::include_image!("../assets/icons/list.svg"),
             Self::Search => egui::include_image!("../assets/icons/search.svg"),
             Self::History => egui::include_image!("../assets/icons/history.svg"),
@@ -184,7 +188,11 @@ impl Icon {
 /// 在布局中显示图标（不可点击）。
 pub fn icon(ui: &mut Ui, icon: Icon, size: f32, tint: Color32) -> egui::Response {
     if let Some(tex) = colored_icon_texture(ui.ctx(), icon, size, tint) {
-        ui.add(egui::Image::from_texture(tex))
+        ui.add(
+            egui::Image::from_texture(tex)
+                .fit_to_exact_size(Vec2::splat(size))
+                .sense(egui::Sense::hover()),
+        )
     } else {
         ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover())
             .1
