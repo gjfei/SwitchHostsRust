@@ -13,14 +13,17 @@ use raw_window_handle::HasWindowHandle;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
+use crate::config_effects::apply_config_side_effects;
+use crate::http_api_runtime::HttpApiRuntime;
 use crate::panels::{
     draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace_drawer, draw_history_drawer,
     draw_hosts_sidebar,
-    draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
+    draw_navigation, draw_preferences_drawer, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
     draw_trash_delete_confirm, draw_trash_panel, editor_status, DetailsAction, EditHostsResult,
-    EditHostsState, FindReplaceAction, FindReplaceState, HistoryResult, HistoryState, NavView, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
+    EditHostsState, FindReplaceAction, FindReplaceState, HistoryResult, HistoryState, NavView,
+    PreferencesAction, PreferencesState, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
-use crate::remote_refresh::refresh_remote_node;
+use crate::remote_refresh::{refresh_all_remote_hosts, refresh_remote_node};
 use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
 use crate::tray_native::{TrayAction, TrayController};
 
@@ -35,11 +38,15 @@ pub struct SwitchHostsApp {
     nav_view: NavView,
     hosts_list_visible: bool,
     test_mode: bool,
-    show_preferences: bool,
+    preferences: PreferencesState,
     edit_hosts: EditHostsState,
     history: HistoryState,
     find_replace: FindReplaceState,
     editor_pending_selection: Option<(usize, usize)>,
+    http_api: HttpApiRuntime,
+    system_dark: bool,
+    startup_refresh_scheduled: bool,
+    startup_refresh_done: bool,
     tray: Option<TrayController>,
     editor_dirty: bool,
     pending_trash_delete: Option<String>,
@@ -52,7 +59,6 @@ impl SwitchHostsApp {
     pub fn new(cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
         crate::fonts::setup_cjk_fonts(&cc.egui_ctx);
         crate::icons::install_loaders(&cc.egui_ctx);
-        theme::setup_light_theme(&cc.egui_ctx);
 
         let config = AppConfig::load(&paths.config_file);
         let manifest = Manifest::load(&paths).unwrap_or_default();
@@ -60,6 +66,13 @@ impl SwitchHostsApp {
         let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
         let tray = TrayController::try_new(&manifest);
         let hosts_list_visible = config.left_panel_show;
+
+        let system_dark = cc.egui_ctx.style().visuals.dark_mode;
+        theme::apply_theme(&cc.egui_ctx, &config.theme, system_dark);
+
+        let mut http_api = HttpApiRuntime::new();
+        http_api.sync(&config, &paths, &target);
+        let startup_refresh_scheduled = config.refresh_remote_hosts_on_startup;
 
         let mut app = Self {
             paths,
@@ -72,11 +85,15 @@ impl SwitchHostsApp {
             nav_view: NavView::Hosts,
             hosts_list_visible,
             test_mode,
-            show_preferences: false,
+            preferences: PreferencesState::default(),
             edit_hosts: EditHostsState::default(),
             history: HistoryState::default(),
             find_replace: FindReplaceState::default(),
             editor_pending_selection: None,
+            http_api,
+            system_dark,
+            startup_refresh_scheduled,
+            startup_refresh_done: false,
             tray,
             editor_dirty: false,
             pending_trash_delete: None,
@@ -87,6 +104,41 @@ impl SwitchHostsApp {
         app.reload_editor();
         app.sync_macos_traffic_lights(cc);
         app
+    }
+
+    fn apply_config_effects(&mut self, ctx: &egui::Context) {
+        apply_config_side_effects(
+            ctx,
+            &self.config,
+            &self.paths,
+            &self.target,
+            self.system_dark,
+            &mut self.http_api,
+        );
+        self.hosts_list_visible = self.config.left_panel_show;
+    }
+
+    fn tick_startup_remote_refresh(&mut self, ctx: &egui::Context) {
+        if self.startup_refresh_done || !self.startup_refresh_scheduled {
+            return;
+        }
+        let start = ctx.input(|i| i.time);
+        if start < 5.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(5.0 - start));
+            return;
+        }
+        self.startup_refresh_done = true;
+        let _ = refresh_all_remote_hosts(&self.paths, &mut self.manifest, &self.config);
+        if self
+            .selected_id
+            .as_ref()
+            .is_some_and(|id| {
+                find_node(&self.manifest.root, id)
+                    .is_some_and(|n| n.get("type").and_then(|v| v.as_str()) == Some("remote"))
+            })
+        {
+            self.reload_editor();
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -357,6 +409,8 @@ impl eframe::App for SwitchHostsApp {
         self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
 
+        self.tick_startup_remote_refresh(ctx);
+
         if ctx.input(|i| {
             i.key_pressed(egui::Key::F) && (i.modifiers.command || i.modifiers.ctrl)
         }) {
@@ -426,11 +480,15 @@ impl eframe::App for SwitchHostsApp {
                 });
         }
 
-        if draw_preferences(ctx, &mut self.show_preferences, &mut self.config) {
-            let _ = self.config.save(&self.paths.config_file);
-            if let Ok(exe) = std::env::current_exe() {
-                let _ = crate::lifecycle::sync_launch_at_login(&self.config, &exe);
-            }
+        if draw_preferences_drawer(
+            ctx,
+            &mut self.preferences,
+            &mut self.config,
+            &self.paths,
+        ) == PreferencesAction::ConfigChanged
+        {
+            self.apply_config_effects(ctx);
+            self.startup_refresh_scheduled = self.config.refresh_remote_hosts_on_startup;
         }
 
         if let Some(action) = draw_find_replace_drawer(
@@ -476,7 +534,7 @@ impl eframe::App for SwitchHostsApp {
             self.history.open_drawer();
         }
         if nav_action.open_settings {
-            self.show_preferences = true;
+            self.preferences.open_drawer();
         }
         if nav_action.open_search {
             self.find_replace.open_drawer();

@@ -40,7 +40,7 @@ impl<'a> ApplyPipeline<'a> {
                 &content,
                 self.config.history_limit,
             )?;
-            run_after_apply(&self.config.cmd_after_hosts_apply)?;
+            run_after_apply(&self.config.cmd_after_hosts_apply, &self.paths.histories_dir)?;
         }
 
         Ok(ApplyResult {

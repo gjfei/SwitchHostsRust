@@ -10,6 +10,43 @@ use switch_hosts_core::storage::entries::{read_entry, write_entry};
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
 
+pub fn refresh_all_remote_hosts(
+    paths: &AppPaths,
+    manifest: &mut Manifest,
+    config: &AppConfig,
+) -> usize {
+    let ids = remote_node_ids(&manifest.root);
+    let mut changed = 0usize;
+    for id in ids {
+        if refresh_remote_node(paths, manifest, config, &id).unwrap_or(false) {
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        let _ = manifest.save(paths);
+    }
+    changed
+}
+
+fn remote_node_ids(nodes: &[serde_json::Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_remote_ids(nodes, &mut out);
+    out
+}
+
+fn collect_remote_ids(nodes: &[serde_json::Value], out: &mut Vec<String>) {
+    for node in nodes {
+        if node.get("type").and_then(|v| v.as_str()) == Some("remote") {
+            if let Some(id) = node.get("id").and_then(|v| v.as_str()) {
+                out.push(id.to_string());
+            }
+        }
+        if let Some(children) = node.get("children").and_then(|v| v.as_array()) {
+            collect_remote_ids(children, out);
+        }
+    }
+}
+
 pub fn refresh_remote_node(
     paths: &AppPaths,
     manifest: &mut Manifest,

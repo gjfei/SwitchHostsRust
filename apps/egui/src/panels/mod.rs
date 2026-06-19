@@ -18,7 +18,7 @@ pub use editor::draw_editor_panel;
 pub use find_replace::{draw_find_replace_drawer, FindReplaceAction, FindReplaceState};
 pub use history::{draw_history_drawer, HistoryResult, HistoryState};
 pub use navigation::{draw_navigation, NavAction, NavView};
-pub use preferences::draw_preferences;
+pub use preferences::{draw_preferences_drawer, PreferencesAction, PreferencesState};
 pub use top_bar::{draw_top_bar, TopBarAction};
 pub use trash::{
     draw_trash_clear_confirm, draw_trash_delete_confirm, draw_trash_panel,

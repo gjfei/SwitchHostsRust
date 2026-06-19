@@ -12,6 +12,10 @@ use eframe::egui::{self, Color32, RichText, ScrollArea, Sense, Stroke, Ui, Vec2}
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::remote_refresh::refresh_remote_node;
+use crate::segmented::{
+    SegmentedConfig, measure_icon_text_segment_width, measure_text_segment_width,
+    paint_segment_icon_text, paint_segment_text, segmented_control,
+};
 use crate::panels::drawer::{
     drawer_frame, drawer_select, drawer_select_option, draw_drawer_header, outline_button,
     outline_button_with_icon, primary_button, side_drawer_geometry, backdrop_dismiss_clicked,
@@ -21,7 +25,7 @@ use crate::panels::drawer::{
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
     ACCENT, DRAWER_BORDER, DRAWER_FOOTER_HEIGHT, DRAWER_INPUT_BORDER, DRAWER_INPUT_RADIUS,
-    DRAWER_LABEL_GAP, DRAWER_PAD, DRAWER_SECTION_GAP, DRAWER_SEGMENTED_BG, DRAWER_WEAK_TEXT,
+    DRAWER_LABEL_GAP, DRAWER_PAD, DRAWER_SECTION_GAP, DRAWER_WEAK_TEXT,
     DRAWER_WIDTH, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS,
 };
 
@@ -31,11 +35,6 @@ const TRANSFER_LIST_H: f32 = 200.0;
 const TRANSFER_ARROWS_W: f32 = 40.0;
 const TRANSFER_COL_GAP: f32 = 4.0;
 const REFRESH_SELECT_W: f32 = 160.0;
-/// Mantine `SegmentedControl` size md（含 root padding）
-const SEGMENTED_HEIGHT: f32 = 36.0;
-const SEGMENTED_INNER: f32 = 4.0;
-const SEGMENTED_ICON: f32 = 16.0;
-const SEGMENTED_GAP: f32 = 4.0;
 
 /// 抽屉模式。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -388,55 +387,19 @@ fn draw_kind_segmented(ui: &mut Ui, kind: &mut HostsNodeKind, enabled: bool) {
         HostsNodeKind::Group,
         HostsNodeKind::Folder,
     ];
-    segmented_control(ui, "hosts_kind", kind, &options, enabled, |ui, k, tint, seg_rect| {
-        paint_segment_icon_text(
-            ui,
-            seg_rect,
-            icons::kind_icon(*k),
-            k.label(),
-            tint,
-        );
-    });
-}
-
-fn paint_segment_icon_text(ui: &Ui, seg_rect: egui::Rect, icon: Icon, text: &str, tint: Color32) {
-    let galley = text_align::layout_vcentered_galley(
+    segmented_control(
         ui,
-        text.to_owned(),
-        ui_font_id(14.0),
-        tint,
-        SEGMENTED_ICON,
-    );
-    let content_w = SEGMENTED_ICON + SEGMENTED_GAP + galley.size().x;
-    let center_y = seg_rect.center().y;
-    let mut x = seg_rect.center().x - content_w / 2.0;
-
-    icons::paint_icon(
-        ui,
-        icon,
-        egui::pos2(x + SEGMENTED_ICON / 2.0, center_y),
-        SEGMENTED_ICON,
-        tint,
-    );
-    x += SEGMENTED_ICON + SEGMENTED_GAP;
-    text_align::paint_galley_row_centered(ui, x, center_y, galley, tint);
-}
-
-fn paint_segment_text(ui: &Ui, seg_rect: egui::Rect, text: &str, tint: Color32) {
-    let galley = text_align::layout_vcentered_galley(
-        ui,
-        text.to_owned(),
-        ui_font_id(14.0),
-        tint,
-        SEGMENTED_ICON,
-    );
-    let center = seg_rect.center();
-    text_align::paint_galley_row_centered(
-        ui,
-        center.x - galley.size().x / 2.0,
-        center.y,
-        galley,
-        tint,
+        "hosts_kind",
+        kind,
+        &options,
+        SegmentedConfig {
+            enabled,
+            ..SegmentedConfig::default()
+        },
+        |ui, k| measure_icon_text_segment_width(ui, icons::kind_icon(*k), k.label()),
+        |ui, k, _active, tint, seg_rect| {
+            paint_segment_icon_text(ui, seg_rect, icons::kind_icon(*k), k.label(), tint);
+        },
     );
 }
 
@@ -751,9 +714,17 @@ fn transfer_arrow_btn(ui: &mut Ui, icon: Icon, enabled: bool) -> egui::Response 
 fn draw_folder_fields(ui: &mut Ui, folder_mode: &mut u8) {
     form_section(ui, "选择模式", |ui| {
         let options: [u8; 3] = [0, 1, 2];
-        segmented_control(ui, "folder_mode", folder_mode, &options, true, |ui, mode, tint, seg_rect| {
-            paint_segment_text(ui, seg_rect, folder_mode_label(*mode), tint);
-        });
+        segmented_control(
+            ui,
+            "folder_mode",
+            folder_mode,
+            &options,
+            SegmentedConfig::default(),
+            |ui, mode| measure_text_segment_width(ui, folder_mode_label(*mode)),
+            |ui, mode, _active, tint, seg_rect| {
+                paint_segment_text(ui, seg_rect, folder_mode_label(*mode), tint);
+            },
+        );
         ui.add_space(8.0);
         ui.label(
             RichText::new(folder_mode_hint(*folder_mode))
@@ -777,77 +748,6 @@ fn folder_mode_hint(mode: u8) -> &'static str {
         2 => "此文件夹内的直接子项目可以同时开启多个。",
         _ => "继承偏好设置中的全局选择模式。",
     }
-}
-
-fn segmented_control<T: Copy + PartialEq>(
-    ui: &mut Ui,
-    id_salt: &str,
-    selected: &mut T,
-    options: &[T],
-    enabled: bool,
-    mut render_label: impl FnMut(&Ui, &T, Color32, egui::Rect),
-) {
-    let n = options.len().max(1);
-    let row_h = SEGMENTED_HEIGHT - SEGMENTED_INNER * 2.0;
-    let label_tint = if enabled {
-        Color32::from_rgb(60, 60, 70)
-    } else {
-        Color32::from_rgb(180, 180, 185)
-    };
-    ui.push_id(id_salt, |ui| {
-        egui::Frame::new()
-            .fill(DRAWER_SEGMENTED_BG)
-            .corner_radius(DRAWER_INPUT_RADIUS)
-            .inner_margin(SEGMENTED_INNER)
-            .show(ui, |ui| {
-                let inner_w = ui.available_width();
-                let (row_rect, _) =
-                    ui.allocate_exact_size(Vec2::new(inner_w, row_h), Sense::hover());
-
-                let seg_w_base = (row_rect.width() / n as f32).floor();
-                let mut seg_x = row_rect.min.x;
-
-                for (i, opt) in options.iter().enumerate() {
-                    let seg_w = if i + 1 == n {
-                        row_rect.max.x - seg_x
-                    } else {
-                        seg_w_base
-                    };
-                    let seg_rect = egui::Rect::from_min_size(
-                        egui::pos2(seg_x, row_rect.min.y),
-                        Vec2::new(seg_w, row_h),
-                    );
-                    seg_x += seg_w;
-
-                    let active = *selected == *opt;
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(seg_rect), |ui| {
-                        if active {
-                            ui.painter().rect_filled(
-                                seg_rect.translate(egui::vec2(0.0, 1.0)),
-                                DRAWER_INPUT_RADIUS,
-                                Color32::from_black_alpha(12),
-                            );
-                            ui.painter().rect_filled(seg_rect, DRAWER_INPUT_RADIUS, Color32::WHITE);
-                        }
-
-                        render_label(ui, opt, label_tint, seg_rect);
-
-                        let resp = ui.interact(
-                            seg_rect,
-                            ui.id().with(i),
-                            if enabled {
-                                Sense::click()
-                            } else {
-                                Sense::hover()
-                            },
-                        );
-                        if enabled && resp.clicked() {
-                            *selected = *opt;
-                        }
-                    });
-                }
-            });
-    });
 }
 
 fn refresh_label(secs: u64) -> &'static str {

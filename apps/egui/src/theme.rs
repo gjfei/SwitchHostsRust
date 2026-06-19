@@ -127,6 +127,35 @@ pub const TREE_TEXT: Color32 = Color32::from_rgb(30, 30, 35);
 /// 选中行文字/图标色（`--swh-font-color-reverse`）
 pub const TREE_TEXT_SELECTED: Color32 = Color32::WHITE;
 
+pub fn apply_theme(ctx: &egui::Context, theme: &str, system_dark: bool) {
+    let dark = match theme {
+        "dark" => true,
+        "light" => false,
+        _ => system_dark,
+    };
+    if dark {
+        setup_dark_theme(ctx);
+    } else {
+        setup_light_theme(ctx);
+    }
+}
+
+pub fn setup_dark_theme(ctx: &egui::Context) {
+    let mut visuals = egui::Visuals::dark();
+    visuals.panel_fill = Color32::from_rgb(26, 27, 30);
+    visuals.window_fill = visuals.panel_fill;
+    visuals.extreme_bg_color = visuals.panel_fill;
+    visuals.faint_bg_color = visuals.panel_fill;
+    visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(37, 38, 43);
+    visuals.widgets.inactive.bg_fill = Color32::from_rgb(44, 46, 51);
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(55, 58, 64);
+    visuals.widgets.active.bg_fill = ACCENT;
+    visuals.selection.bg_fill = Color32::from_rgb(56, 74, 110);
+    visuals.selection.stroke = Stroke::new(1.0, Color32::from_rgb(120, 170, 220));
+    visuals.window_corner_radius = CornerRadius::same(4);
+    ctx.set_visuals(visuals);
+}
+
 pub fn setup_light_theme(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::light();
     visuals.panel_fill = WINDOW_BG;
