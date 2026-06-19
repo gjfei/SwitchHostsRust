@@ -1,0 +1,36 @@
+{
+  "format": "switchhosts-data",
+  "schemaVersion": 1,
+  "root": [
+    {
+      "id": "0",
+      "type": "local",
+      "title": "System Hosts",
+      "on": false,
+      "isSys": true
+    },
+    {
+      "id": "local-1",
+      "type": "local",
+      "title": "Local Dev",
+      "on": true,
+      "contentFile": "entries/local-1.hosts"
+    },
+    {
+      "id": "folder-1",
+      "type": "folder",
+      "title": "Folder",
+      "on": false,
+      "folder": { "mode": 0 },
+      "children": [
+        {
+          "id": "local-2",
+          "type": "local",
+          "title": "Nested",
+          "on": false,
+          "contentFile": "entries/local-2.hosts"
+        }
+      ]
+    }
+  ]
+}
