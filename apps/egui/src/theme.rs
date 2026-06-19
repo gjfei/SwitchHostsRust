@@ -37,6 +37,9 @@ pub const STATUS_BAR_HEIGHT: f32 = 22.0;
 
 pub const SEPARATOR: Color32 = Color32::from_rgb(233, 233, 236);
 
+/// RightPanel `border-radius: 0 md md 0`
+pub const RIGHT_PANEL_RADIUS: f32 = 4.0;
+
 pub const TOP_BAR_HEIGHT: f32 = 40.0;
 /// debug 测试模式横幅高度（位于 TopBar 下方，不占标题栏区域）
 pub const TEST_BANNER_HEIGHT: f32 = 24.0;

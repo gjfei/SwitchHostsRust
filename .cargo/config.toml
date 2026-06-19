@@ -1,0 +1,3 @@
+[alias]
+# -x 后的命令必须整体引用，否则 -p egui-app 会丢失，退化成 default-members (cli)
+dev-gui = ["watch", "-x", "run -p egui-app"]

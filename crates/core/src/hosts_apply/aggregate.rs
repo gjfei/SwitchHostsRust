@@ -25,16 +25,49 @@ fn collect_selected(
 ) -> Result<(), StorageError> {
     for node in nodes {
         if is_on(node) {
-            if let Some(id) = node.get("id").and_then(Value::as_str) {
-                let content = entries::read_entry(&paths.entries_dir, id)?;
-                if !content.is_empty() {
-                    out.push(content);
-                }
-            }
+            collect_on_node_content(node, paths, out)?;
         }
         if let Some(children) = node.get("children").and_then(Value::as_array) {
             collect_selected(children, paths, out)?;
         }
+    }
+    Ok(())
+}
+
+/// 已开启节点的 hosts 内容：local/remote 读自身 entry；group 展开 `include` 列表。
+fn collect_on_node_content(
+    node: &Value,
+    paths: &AppPaths,
+    out: &mut Vec<String>,
+) -> Result<(), StorageError> {
+    match node.get("type").and_then(Value::as_str) {
+        Some("group") => {
+            if let Some(include) = node.get("include").and_then(Value::as_array) {
+                for id_val in include {
+                    if let Some(id) = id_val.as_str() {
+                        push_entry_if_non_empty(paths, id, out)?;
+                    }
+                }
+            }
+        }
+        Some("folder") => {}
+        _ => {
+            if let Some(id) = node.get("id").and_then(Value::as_str) {
+                push_entry_if_non_empty(paths, id, out)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn push_entry_if_non_empty(
+    paths: &AppPaths,
+    id: &str,
+    out: &mut Vec<String>,
+) -> Result<(), StorageError> {
+    let content = entries::read_entry(&paths.entries_dir, id)?;
+    if !content.is_empty() {
+        out.push(content);
     }
     Ok(())
 }
@@ -139,6 +172,54 @@ mod tests {
         let content = aggregate_selected_content(&list, &paths, false).unwrap();
         assert!(content.contains("a.test"));
         assert!(!content.contains("b.test"));
+    }
+
+    #[test]
+    fn aggregates_group_include_when_on() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        paths.ensure_layout().unwrap();
+        entries::write_entry(&paths.entries_dir, "a", "127.0.0.1 a.test\n").unwrap();
+        entries::write_entry(&paths.entries_dir, "b", "127.0.0.1 b.test\n").unwrap();
+
+        let list = json!([
+            { "id": "a", "type": "local", "on": false },
+            { "id": "b", "type": "local", "on": false },
+            {
+                "id": "g1",
+                "type": "group",
+                "on": true,
+                "include": ["a", "b"]
+            }
+        ])
+        .as_array()
+        .cloned()
+        .unwrap();
+
+        let content = aggregate_selected_content(&list, &paths, false).unwrap();
+        assert!(content.contains("a.test"));
+        assert!(content.contains("b.test"));
+    }
+
+    #[test]
+    fn group_off_does_not_include_members() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        paths.ensure_layout().unwrap();
+        entries::write_entry(&paths.entries_dir, "a", "127.0.0.1 a.test\n").unwrap();
+
+        let list = json!([{
+            "id": "g1",
+            "type": "group",
+            "on": false,
+            "include": ["a"]
+        }])
+        .as_array()
+        .cloned()
+        .unwrap();
+
+        let content = aggregate_selected_content(&list, &paths, false).unwrap();
+        assert!(content.is_empty());
     }
 
     #[test]

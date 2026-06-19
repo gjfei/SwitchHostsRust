@@ -5,6 +5,7 @@ use eframe::egui::{self, Color32, Sense, Stroke, Ui, Vec2};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
+use crate::panels::drawer::{draw_confirm_modal, ConfirmModalResult};
 use crate::panels::widgets::ellipsize_text;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
@@ -295,31 +296,18 @@ fn draw_trash_confirm_dialog(
     message: &str,
     confirm_token: String,
 ) -> TrashDeleteConfirmResult {
-    let mut result = TrashDeleteConfirmResult::None;
-    egui::Window::new(window_title)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
-            ui.label(message);
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                if ui.button("取消").clicked() {
-                    result = TrashDeleteConfirmResult::Cancelled;
-                }
-                if ui
-                    .add(
-                        egui::Button::new("删除")
-                            .fill(ACCENT)
-                            .stroke(Stroke::NONE),
-                    )
-                    .clicked()
-                {
-                    result = TrashDeleteConfirmResult::Confirmed(confirm_token.clone());
-                }
-            });
-        });
-    result
+    match draw_confirm_modal(
+        ctx,
+        &format!("trash_confirm_{window_title}"),
+        window_title,
+        message,
+        "删除",
+        true,
+    ) {
+        ConfirmModalResult::None => TrashDeleteConfirmResult::None,
+        ConfirmModalResult::Cancelled => TrashDeleteConfirmResult::Cancelled,
+        ConfirmModalResult::Confirmed => TrashDeleteConfirmResult::Confirmed(confirm_token),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

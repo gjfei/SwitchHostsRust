@@ -7,17 +7,22 @@ use switch_hosts_core::manifest_edit::{
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
-use eframe::egui::{self, Color32, CornerRadius, FontId, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::remote_refresh::refresh_remote_node;
+use crate::panels::drawer::{
+    drawer_frame, drawer_select, drawer_select_option, draw_drawer_header, outline_button,
+    outline_button_with_icon, primary_button, side_drawer_geometry, backdrop_dismiss_clicked,
+    paint_side_drawer_backdrop, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT, DRAWER_INPUT_TEXT,
+    DRAWER_SHADOW,
+};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{
-    ACCENT, DRAWER_BORDER, DRAWER_FOOTER_HEIGHT, DRAWER_HEADER_HEIGHT, DRAWER_INPUT_BORDER,
-    DRAWER_INPUT_RADIUS, DRAWER_LABEL_GAP, DRAWER_OFFSET, DRAWER_PAD, DRAWER_RADIUS,
-    DRAWER_SECTION_GAP, DRAWER_SEGMENTED_BG, DRAWER_WEAK_TEXT, DRAWER_WIDTH,
-    TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS,
+    ACCENT, DRAWER_BORDER, DRAWER_FOOTER_HEIGHT, DRAWER_INPUT_BORDER, DRAWER_INPUT_RADIUS,
+    DRAWER_LABEL_GAP, DRAWER_PAD, DRAWER_SECTION_GAP, DRAWER_SEGMENTED_BG, DRAWER_WEAK_TEXT,
+    DRAWER_WIDTH, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS,
 };
 
 const TITLE_MAX_LEN: usize = 50;
@@ -26,23 +31,11 @@ const TRANSFER_LIST_H: f32 = 200.0;
 const TRANSFER_ARROWS_W: f32 = 40.0;
 const TRANSFER_COL_GAP: f32 = 4.0;
 const REFRESH_SELECT_W: f32 = 160.0;
-const DRAWER_INPUT_HEIGHT: f32 = 36.0;
-const DRAWER_INPUT_TEXT: Color32 = Color32::from_rgb(30, 30, 35);
-const DRAWER_INPUT_H_PAD: f32 = 12.0;
 /// Mantine `SegmentedControl` size md（含 root padding）
 const SEGMENTED_HEIGHT: f32 = 36.0;
 const SEGMENTED_INNER: f32 = 4.0;
 const SEGMENTED_ICON: f32 = 16.0;
 const SEGMENTED_GAP: f32 = 4.0;
-const DRAWER_BTN_H: f32 = 36.0;
-const DRAWER_BTN_MIN_W: f32 = 88.0;
-const DRAWER_CORNER_RADIUS: CornerRadius = CornerRadius::same(DRAWER_RADIUS as u8);
-const DRAWER_SHADOW: egui::epaint::Shadow = egui::epaint::Shadow {
-    offset: [0, 4],
-    blur: 16,
-    spread: 0,
-    color: Color32::from_black_alpha(30),
-};
 
 /// 抽屉模式。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,74 +122,32 @@ pub fn draw_edit_hosts_drawer(
     let is_add = state.is_add();
     let allow_backdrop_dismiss = state.open_last_frame;
 
-    let screen = ctx.input(|i| i.screen_rect());
-    let backdrop_rect = screen;
-
-    let drawer_rect = {
-        let inset = screen.shrink2(egui::Vec2::splat(DRAWER_OFFSET));
-        egui::Rect::from_min_max(
-            egui::pos2(inset.right() - DRAWER_WIDTH, inset.top()),
-            egui::pos2(inset.right(), inset.bottom()),
-        )
-    };
-
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("edit_hosts_backdrop"),
-    ))
-    .rect_filled(backdrop_rect, 0.0, Color32::from_black_alpha(100));
-
-    let backdrop_clicked = ctx.input(|i| {
-        i.pointer.primary_clicked()
-            && i.pointer
-                .interact_pos()
-                .is_some_and(|pos| backdrop_rect.contains(pos) && !drawer_rect.contains(pos))
-    });
-    if allow_backdrop_dismiss && backdrop_clicked {
+    let geom = side_drawer_geometry(ctx, DRAWER_WIDTH);
+    paint_side_drawer_backdrop(ctx, "edit_hosts_backdrop", geom.backdrop_rect);
+    if allow_backdrop_dismiss
+        && backdrop_dismiss_clicked(ctx, geom.backdrop_rect, geom.drawer_rect, true)
+    {
         state.open = false;
         result = EditHostsResult::Cancelled;
     }
 
-    let shadow_margin = {
-        let sm = DRAWER_SHADOW.margin();
-        egui::Margin {
-            left: sm.left.ceil() as i8,
-            right: sm.right.ceil() as i8,
-            top: sm.top.ceil() as i8,
-            bottom: sm.bottom.ceil() as i8,
-        }
-    };
-    let area_rect = egui::Rect::from_min_max(
-        egui::pos2(
-            drawer_rect.min.x - shadow_margin.left as f32,
-            drawer_rect.min.y - shadow_margin.top as f32,
-        ),
-        egui::pos2(
-            drawer_rect.max.x + shadow_margin.right as f32,
-            drawer_rect.max.y + shadow_margin.bottom as f32,
-        ),
-    );
-
     egui::Area::new(egui::Id::new("edit_hosts_drawer"))
         .order(egui::Order::Foreground)
-        .fixed_pos(area_rect.min)
+        .fixed_pos(geom.area_rect.min)
         .show(ctx, |ui| {
-            ui.set_min_size(area_rect.size());
-            ui.set_max_size(area_rect.size());
+            ui.set_min_size(geom.area_rect.size());
+            ui.set_max_size(geom.area_rect.size());
 
-            egui::Frame::new()
-                .fill(Color32::WHITE)
-                .corner_radius(DRAWER_CORNER_RADIUS)
-                .stroke(Stroke::new(1.0, DRAWER_BORDER))
-                .outer_margin(shadow_margin)
+            drawer_frame()
+                .outer_margin(geom.shadow_margin)
                 .shadow(DRAWER_SHADOW)
                 .show(ui, |ui| {
-                    ui.set_width(drawer_rect.width());
-                    ui.set_height(drawer_rect.height());
+                    ui.set_width(geom.drawer_rect.width());
+                    ui.set_height(geom.drawer_rect.height());
 
                     let title = if is_add { "添加 hosts" } else { "编辑 hosts" };
                     ui.vertical(|ui| {
-                        if draw_drawer_header(ui, title) {
+                        if draw_drawer_header(ui, Icon::Edit, title, "drawer_close") {
                             state.open = false;
                             result = EditHostsResult::Cancelled;
                         }
@@ -204,7 +155,7 @@ pub fn draw_edit_hosts_drawer(
                         let body_h = ui.available_height() - DRAWER_FOOTER_HEIGHT;
                         let body_rect = egui::Rect::from_min_size(
                             ui.cursor().min,
-                            Vec2::new(drawer_rect.width(), body_h.max(0.0)),
+                            Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
                         ui.painter()
                             .rect_filled(body_rect, 0.0, Color32::WHITE);
@@ -262,45 +213,6 @@ pub fn draw_edit_hosts_drawer(
     result
 }
 
-fn draw_drawer_header(ui: &mut Ui, title: &str) -> bool {
-    let mut close = false;
-    let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, DRAWER_HEADER_HEIGHT), Sense::hover());
-    let cy = rect.center().y;
-    text_align::paint_icon_text_row(
-        ui,
-        cy,
-        rect.left() + DRAWER_PAD,
-        Icon::Edit,
-        18.0,
-        10.0,
-        title,
-        ui_font_id(16.0),
-        Color32::BLACK,
-        18.0,
-    );
-    let close_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - DRAWER_PAD - 14.0, cy),
-        Vec2::splat(28.0),
-    );
-    let close_resp = ui.interact(close_rect, ui.id().with("drawer_close"), Sense::click());
-    if close_resp.hovered() {
-        ui.painter()
-            .rect_filled(close_rect, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
-    }
-    icons::paint_icon(
-        ui,
-        Icon::X,
-        close_rect.center(),
-        18.0,
-        Color32::from_rgb(100, 100, 110),
-    );
-    if close_resp.clicked() {
-        close = true;
-    }
-    close
-}
-
 fn draw_drawer_footer(
     ui: &mut Ui,
     state: &mut EditHostsState,
@@ -323,7 +235,7 @@ fn draw_drawer_footer(
 
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left), |ui| {
         if !is_add {
-            if outline_button_with_icon(ui, Icon::Trash, "移到回收站", false).clicked() {
+            if outline_button_with_icon(ui, Icon::Trash, "移到回收站", false, true).clicked() {
                 if let Some(EditHostsMode::Edit { id }) = state.mode.clone() {
                     if let Some((node, parent_id)) =
                         remove_node_with_parent(&mut manifest.root, &id)
@@ -374,119 +286,6 @@ fn form_label(ui: &mut Ui, label: &str) {
     ui.add_space(DRAWER_LABEL_GAP);
 }
 
-fn with_flat_combo_style<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let style = ui.style_mut();
-    let saved_inactive = style.visuals.widgets.inactive;
-    let saved_hovered = style.visuals.widgets.hovered;
-    let saved_open = style.visuals.widgets.open;
-    let saved_btn_pad = style.spacing.button_padding;
-
-    let text_stroke = Stroke::new(1.0, DRAWER_INPUT_TEXT);
-    for widget in [
-        &mut style.visuals.widgets.inactive,
-        &mut style.visuals.widgets.hovered,
-        &mut style.visuals.widgets.open,
-    ] {
-        widget.weak_bg_fill = Color32::TRANSPARENT;
-        widget.bg_fill = Color32::TRANSPARENT;
-        widget.bg_stroke = Stroke::NONE;
-        widget.fg_stroke = text_stroke;
-    }
-    style.spacing.button_padding = egui::vec2(0.0, 0.0);
-
-    let result = add(ui);
-
-    let style = ui.style_mut();
-    style.visuals.widgets.inactive = saved_inactive;
-    style.visuals.widgets.hovered = saved_hovered;
-    style.visuals.widgets.open = saved_open;
-    style.spacing.button_padding = saved_btn_pad;
-
-    result
-}
-
-/// Mantine `Select`：`maw={160}` + 与 TextInput 同高（36px）。
-fn drawer_select(
-    ui: &mut Ui,
-    id_salt: &'static str,
-    width: f32,
-    selected: &str,
-    menu: impl FnOnce(&mut Ui),
-) {
-    let combo_id = egui::Id::new(id_salt);
-    let is_open = egui::ComboBox::is_open(ui.ctx(), combo_id);
-    let inner_w = (width - DRAWER_INPUT_H_PAD * 2.0).max(0.0);
-
-    let (row_rect, _) = ui.allocate_exact_size(
-        Vec2::new(width, DRAWER_INPUT_HEIGHT),
-        Sense::hover(),
-    );
-
-    ui.painter().rect(
-        row_rect,
-        DRAWER_INPUT_RADIUS,
-        Color32::WHITE,
-        Stroke::new(
-            1.0,
-            if is_open {
-                ACCENT
-            } else {
-                DRAWER_INPUT_BORDER
-            },
-        ),
-        egui::StrokeKind::Inside,
-    );
-
-    let inner_rect = row_rect.shrink2(egui::vec2(DRAWER_INPUT_H_PAD, 0.0));
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            ui.set_height(inner_rect.height());
-            with_flat_combo_style(ui, |ui| {
-                egui::ComboBox::from_id_salt(id_salt)
-                    .width(inner_w)
-                    .selected_text(
-                        RichText::new(selected)
-                            .size(14.0)
-                            .color(DRAWER_INPUT_TEXT)
-                            .font(ui_font_id(14.0)),
-                    )
-                    .show_ui(ui, menu);
-            });
-        });
-    });
-}
-
-/// Mantine Select 下拉项：选中项浅红底 + 主色文字。
-fn drawer_select_option(ui: &mut Ui, current: &mut u64, value: u64, label: &str) {
-    let selected = *current == value;
-    let row_h = 28.0;
-    let text_color = if selected { ACCENT } else { DRAWER_INPUT_TEXT };
-    let (rect, mut response) = ui.allocate_at_least(Vec2::new(ui.available_width(), row_h), Sense::click());
-    if ui.is_rect_visible(rect) {
-        let fill = if selected {
-            crate::theme::TREE_HOVER
-        } else if response.hovered() {
-            TOP_BAR_ICON_HOVER
-        } else {
-            Color32::WHITE
-        };
-        ui.painter()
-            .rect_filled(rect, DRAWER_INPUT_RADIUS, fill);
-        let galley = text_align::layout_vcentered_galley(
-            ui,
-            label.to_owned(),
-            ui_font_id(14.0),
-            text_color,
-            row_h,
-        );
-        text_align::paint_galley_row_centered(ui, rect.left() + 8.0, rect.center().y, galley, text_color);
-    }
-    if response.clicked() && *current != value {
-        *current = value;
-        response.mark_changed();
-    }
-}
-
 /// Mantine `Button variant="subtle" size="sm"`。
 fn drawer_subtle_button(ui: &mut Ui, label: &str, enabled: bool) -> egui::Response {
     let text_color = if enabled {
@@ -504,6 +303,51 @@ fn drawer_subtle_button(ui: &mut Ui, label: &str, enabled: bool) -> egui::Respon
     )
 }
 
+fn drawer_text_input(
+    ui: &mut Ui,
+    text: &mut String,
+    id: egui::Id,
+    stroke: Stroke,
+    hint: Option<&str>,
+) -> egui::Response {
+    let font_id = ui_font_id(14.0);
+    let stroke_inset = stroke.width.max(1.0);
+    let w = ui.available_width();
+
+    let (row_rect, _) =
+        ui.allocate_exact_size(Vec2::new(w, DRAWER_INPUT_HEIGHT), Sense::hover());
+    ui.painter().rect(
+        row_rect,
+        DRAWER_INPUT_RADIUS,
+        Color32::WHITE,
+        stroke,
+        egui::StrokeKind::Inside,
+    );
+
+    let inner = row_rect.shrink(stroke_inset);
+
+    // 对齐 egui demo：horizontal_align + vertical_align + show
+    // https://github.com/emilk/egui/blob/main/crates/egui_demo_lib/src/demo/text_edit.rs
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
+        let mut edit = egui::TextEdit::singleline(text)
+            .id(id)
+            .desired_width(f32::INFINITY)
+            .font(font_id.clone())
+            .margin(egui::Margin::symmetric(DRAWER_INPUT_H_PAD as i8, 0))
+            .horizontal_align(egui::Align::LEFT)
+            .vertical_align(egui::Align::Center)
+            .frame(false)
+            .min_size(inner.size());
+
+        if let Some(h) = hint {
+            edit = edit.hint_text(h).hint_text_font(font_id);
+        }
+
+        edit.show(ui).response
+    })
+    .inner
+}
+
 fn draw_title_field(
     ui: &mut Ui,
     title: &mut String,
@@ -517,31 +361,22 @@ fn draw_title_field(
     let id = ui.id().with("hosts_title");
     let is_error = *title_error && title.trim().is_empty();
     let will_focus = *focus_title || ui.memory(|m| m.has_focus(id));
-    let edit = egui::TextEdit::singleline(title)
-        .id(id)
-        .desired_width(f32::INFINITY)
-        .margin(egui::Margin::symmetric(12, 10))
-        .frame(false);
-
-    let framed = egui::Frame::new()
-        .fill(Color32::WHITE)
-        .stroke(Stroke::new(
-            if is_error { 1.5 } else { 1.0 },
-            if is_error || will_focus {
-                ACCENT
-            } else {
-                DRAWER_INPUT_BORDER
-            },
-        ))
-        .corner_radius(DRAWER_INPUT_RADIUS)
-        .show(ui, |ui| ui.add(edit));
+    let stroke = Stroke::new(
+        if is_error { 1.5 } else { 1.0 },
+        if is_error || will_focus {
+            ACCENT
+        } else {
+            DRAWER_INPUT_BORDER
+        },
+    );
+    let response = drawer_text_input(ui, title, id, stroke, None);
 
     if *focus_title {
-        framed.inner.request_focus();
+        response.request_focus();
         *focus_title = false;
     }
 
-    if framed.inner.changed() {
+    if response.changed() {
         *title_error = false;
     }
 }
@@ -614,16 +449,13 @@ fn draw_remote_fields(
     is_add: bool,
 ) {
     form_section(ui, "URL", |ui| {
-        let edit = egui::TextEdit::singleline(&mut state.draft.url)
-            .desired_width(f32::INFINITY)
-            .hint_text("http:// 或 https:// 或 file://")
-            .margin(egui::Margin::symmetric(12, 10));
-        egui::Frame::new()
-            .stroke(Stroke::new(1.0, DRAWER_INPUT_BORDER))
-            .corner_radius(DRAWER_INPUT_RADIUS)
-            .show(ui, |ui| {
-                ui.add(edit);
-            });
+        drawer_text_input(
+            ui,
+            &mut state.draft.url,
+            ui.id().with("hosts_url"),
+            Stroke::new(1.0, DRAWER_INPUT_BORDER),
+            Some("http:// 或 https:// 或 file://"),
+        );
     });
 
     form_section(ui, "自动刷新", |ui| {
@@ -1060,88 +892,4 @@ fn try_save(
     } else {
         EditHostsResult::None
     }
-}
-
-fn drawer_text_button(
-    ui: &mut Ui,
-    label: &str,
-    fill: Color32,
-    stroke: Stroke,
-    text_color: Color32,
-) -> egui::Response {
-    let (rect, response) = ui.allocate_at_least(
-        Vec2::new(DRAWER_BTN_MIN_W, DRAWER_BTN_H),
-        Sense::click(),
-    );
-    if ui.is_rect_visible(rect) {
-        ui.painter().rect(
-            rect,
-            DRAWER_INPUT_RADIUS,
-            fill,
-            stroke,
-            egui::StrokeKind::Inside,
-        );
-        let galley = text_align::layout_vcentered_galley(
-            ui,
-            label.to_owned(),
-            ui_font_id(14.0),
-            text_color,
-            ICON_ROW_LINE_HEIGHT,
-        );
-        text_align::paint_galley_row_centered(
-            ui,
-            rect.center().x - galley.size().x / 2.0,
-            rect.center().y,
-            galley,
-            text_color,
-        );
-    }
-    response
-}
-
-fn primary_button(ui: &mut Ui, label: &str) -> egui::Response {
-    drawer_text_button(ui, label, ACCENT, Stroke::NONE, Color32::WHITE)
-}
-
-fn outline_button(ui: &mut Ui, label: &str) -> egui::Response {
-    drawer_text_button(
-        ui,
-        label,
-        Color32::WHITE,
-        Stroke::new(1.0, ACCENT),
-        ACCENT,
-    )
-}
-
-fn outline_button_with_icon(
-    ui: &mut Ui,
-    icon: Icon,
-    label: &str,
-    danger: bool,
-) -> egui::Response {
-    let stroke = if danger {
-        Stroke::new(1.0, ACCENT)
-    } else {
-        Stroke::new(1.0, DRAWER_INPUT_BORDER)
-    };
-    ui.horizontal(|ui| {
-        icons::icon(
-            ui,
-            icon,
-            Icon::DEFAULT_SIZE,
-            if danger {
-                ACCENT
-            } else {
-                Color32::from_rgb(60, 60, 70)
-            },
-        );
-        ui.add(
-            egui::Button::new(label)
-                .fill(Color32::WHITE)
-                .stroke(stroke)
-                .corner_radius(DRAWER_INPUT_RADIUS)
-                .min_size(Vec2::new(120.0, 36.0)),
-        )
-    })
-    .inner
 }

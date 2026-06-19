@@ -50,6 +50,59 @@ impl EditorMetrics {
     }
 }
 
+/// 只读 hosts 预览（对齐 `HostsViewer`）。
+pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
+    let bg = EDITOR_READONLY_BG;
+    let full_rect = ui.max_rect();
+    ui.painter().rect_filled(full_rect, 0.0, bg);
+
+    let line_count = text.lines().count().max(1);
+    let editor_id = Id::new("hosts_readonly_viewer");
+
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
+        egui::Frame::new()
+            .fill(bg)
+            .stroke(Stroke::NONE)
+            .inner_margin(0.0)
+            .show(ui, |ui| {
+                let metrics = EditorMetrics::from_ui(ui);
+                let inner = ui.available_size();
+                let content_h = metrics.content_height(line_count);
+                let body_h = inner.y.max(content_h);
+
+                egui::ScrollArea::both()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        ui.set_min_size(Vec2::new(inner.x, body_h));
+                        ui.horizontal_top(|ui| {
+                            ui.set_min_height(body_h);
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            let mut gutter_line = None;
+                            draw_gutter(
+                                ui,
+                                &metrics,
+                                line_count,
+                                body_h,
+                                bg,
+                                true,
+                                &mut gutter_line,
+                            );
+                            draw_code_area(
+                                ui,
+                                &metrics,
+                                text,
+                                true,
+                                line_count,
+                                body_h,
+                                editor_id,
+                                None,
+                            );
+                        });
+                    });
+            });
+    });
+}
+
 pub fn draw_editor_panel(
     ui: &mut Ui,
     text: &mut String,

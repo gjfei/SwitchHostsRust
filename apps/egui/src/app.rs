@@ -14,10 +14,11 @@ use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
 use crate::panels::{
-    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace, draw_hosts_sidebar,
+    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace, draw_history_drawer,
+    draw_hosts_sidebar,
     draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
-    draw_trash_delete_confirm, draw_trash_panel, editor_status, EditHostsResult, EditHostsState, FindReplaceState, NavView,
-    TrashDeleteConfirmResult, TrashEvent, TreeEvent,
+    draw_trash_delete_confirm, draw_trash_panel, editor_status, DetailsAction, EditHostsResult,
+    EditHostsState, FindReplaceState, HistoryResult, HistoryState, NavView, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
 use crate::remote_refresh::refresh_remote_node;
 use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
@@ -37,6 +38,7 @@ pub struct SwitchHostsApp {
     show_preferences: bool,
     show_find_replace: bool,
     edit_hosts: EditHostsState,
+    history: HistoryState,
     find_replace: FindReplaceState,
     tray: Option<TrayController>,
     editor_dirty: bool,
@@ -73,6 +75,7 @@ impl SwitchHostsApp {
             show_preferences: false,
             show_find_replace: false,
             edit_hosts: EditHostsState::default(),
+            history: HistoryState::default(),
             find_replace: FindReplaceState::default(),
             tray,
             editor_dirty: false,
@@ -110,14 +113,18 @@ impl SwitchHostsApp {
         self.editor_dirty = false;
     }
 
-    fn save_editor(&mut self) {
-        if let Some(id) = &self.selected_id {
-            if id == SYSTEM_NODE_ID {
-                return;
-            }
-            let _ = entries::write_entry(&self.paths.entries_dir, id, &self.editor_text);
+    fn save_editor(&mut self) -> bool {
+        let Some(id) = self.selected_id.clone() else {
+            self.editor_dirty = false;
+            return false;
+        };
+        if id == SYSTEM_NODE_ID {
+            self.editor_dirty = false;
+            return false;
         }
+        let _ = entries::write_entry(&self.paths.entries_dir, &id, &self.editor_text);
         self.editor_dirty = false;
+        true
     }
 
     fn apply_hosts(&mut self) {
@@ -202,6 +209,42 @@ impl SwitchHostsApp {
             Err(message) => {
                 tracing::warn!("refresh remote hosts failed: {message}");
             }
+        }
+    }
+
+    fn on_details_action(&mut self, action: DetailsAction) {
+        if action.edit {
+            if self.nav_view == NavView::Trash {
+                if let Some(id) = self.selected_id.as_deref() {
+                    if let Some(item) = self.trashcan.items.iter().find(|i| i.id == id) {
+                        self.edit_hosts.open_edit(&item.node);
+                    }
+                }
+            } else if let Some(id) = self.selected_id.as_deref() {
+                if id != SYSTEM_NODE_ID {
+                    if let Some(node) = find_node(&self.manifest.root, id) {
+                        self.edit_hosts.open_edit(&node);
+                    }
+                }
+            }
+        }
+        if action.refresh {
+            if let Some(id) = self.selected_id.clone() {
+                self.refresh_remote_hosts(&id);
+            }
+        }
+        if action.restore {
+            if let Some(id) = self.selected_id.clone() {
+                self.restore_from_trash(&id);
+            }
+        }
+        if action.delete {
+            if let Some(id) = self.selected_id.clone() {
+                self.pending_trash_delete = Some(id);
+            }
+        }
+        if action.open_history {
+            self.history.open_drawer();
         }
     }
 
@@ -401,6 +444,9 @@ impl eframe::App for SwitchHostsApp {
             self.hosts_list_visible,
             self.trashcan.items.len(),
         );
+        if nav_action.open_history {
+            self.history.open_drawer();
+        }
         if nav_action.open_settings {
             self.show_preferences = true;
         }
@@ -451,9 +497,18 @@ impl eframe::App for SwitchHostsApp {
         if self.config.right_panel_show {
             egui::SidePanel::right("details_panel")
                 .default_width(self.config.right_panel_width as f32)
-                .frame(egui::Frame::new().fill(SIDEBAR_BG))
+                .frame(egui::Frame::new().fill(theme::WINDOW_BG).inner_margin(0.0))
                 .show(ctx, |ui| {
-                    draw_details(ui, &self.manifest, self.selected_id.as_deref());
+                    let action = draw_details(
+                        ui,
+                        &self.manifest,
+                        &self.trashcan,
+                        self.nav_view,
+                        self.selected_id.as_deref(),
+                        &self.editor_text,
+                        &self.target.path().display().to_string(),
+                    );
+                    self.on_details_action(action);
                 });
         }
 
@@ -473,7 +528,9 @@ impl eframe::App for SwitchHostsApp {
             self.editor_dirty = true;
         }
         if self.editor_dirty {
-            self.save_editor();
+            if self.save_editor() {
+                self.apply_hosts();
+            }
         }
 
         match draw_edit_hosts_drawer(
@@ -507,6 +564,13 @@ impl eframe::App for SwitchHostsApp {
             }
             EditHostsResult::Cancelled => {}
             EditHostsResult::None => {}
+        }
+
+        match draw_history_drawer(ctx, &mut self.history, &self.paths, &mut self.config) {
+            HistoryResult::ConfigChanged => {
+                let _ = self.config.save(&self.paths.config_file);
+            }
+            HistoryResult::Closed | HistoryResult::None => {}
         }
 
         if self.pending_trash_clear {
