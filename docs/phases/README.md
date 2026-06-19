@@ -5,6 +5,6 @@
 | 1 | [phase-1.md](./phase-1.md) | 已完成 |
 | 2 | [phase-2.md](./phase-2.md) | 已完成 |
 | 3 | [phase-3.md](./phase-3.md) | 已完成 |
-| 4 | [phase-4.md](./phase-4.md) | 进行中 |
+| 4 | [phase-4.md](./phase-4.md) | 已完成 |
 
 标记阶段完成前请确保 `cargo test --workspace` 全部通过。
