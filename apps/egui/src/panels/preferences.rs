@@ -45,6 +45,14 @@ pub fn draw_preferences(
                 });
             ui.checkbox(&mut config.right_panel_show, "显示右侧详情面板");
 
+            ui.heading("生命周期");
+            ui.checkbox(&mut config.launch_at_login, "登录时启动");
+            ui.checkbox(&mut config.hide_at_launch, "启动时隐藏主窗口");
+            ui.checkbox(
+                &mut config.tray_mini_window,
+                "关闭窗口时最小化到托盘",
+            );
+
             ui.heading("HTTP API");
             ui.checkbox(&mut config.http_api_on, "启用本地 HTTP API (:50761)");
             ui.checkbox(

@@ -39,6 +39,8 @@ uuid = { version = "1", features = ["v4"] }
 eframe = { version = "0.31", default-features = true }
 egui = "0.31"
 rfd = "0.15"
+tray-icon = "0.19"
+auto-launch = "0.5"
 
 switch-hosts-core = { path = "crates/core", package = "core" }
 service = { path = "crates/service" }

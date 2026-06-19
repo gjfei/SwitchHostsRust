@@ -6,12 +6,16 @@ use switch_hosts_core::storage::entries;
 use switch_hosts_core::storage::manifest::Manifest;
 use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::Trashcan;
+use switch_hosts_core::toggle::toggle_item;
 use eframe::egui;
+use tray_icon::menu::MenuEvent;
+use tray_icon::TrayIconEvent;
 
 use crate::panels::{
     draw_activity_bar, draw_details, draw_editor, draw_find_replace, draw_preferences,
     draw_trash, draw_tree, FindReplaceState,
 };
+use crate::tray_native::{TrayAction, TrayController};
 
 pub struct SwitchHostsApp {
     paths: AppPaths,
@@ -27,6 +31,7 @@ pub struct SwitchHostsApp {
     show_preferences: bool,
     show_find_replace: bool,
     find_replace: FindReplaceState,
+    tray: Option<TrayController>,
 }
 
 impl SwitchHostsApp {
@@ -35,6 +40,7 @@ impl SwitchHostsApp {
         let manifest = Manifest::load(&paths).unwrap_or_default();
         let trashcan = Trashcan::load(&paths.trashcan_file);
         let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
+        let tray = TrayController::try_new(&manifest);
         Self {
             paths,
             target,
@@ -49,6 +55,7 @@ impl SwitchHostsApp {
             show_preferences: false,
             show_find_replace: false,
             find_replace: FindReplaceState::default(),
+            tray,
         }
     }
 
@@ -75,10 +82,55 @@ impl SwitchHostsApp {
         };
         let _ = pipeline.apply(&self.manifest, &self.target);
     }
+
+    fn show_main_window(&self, ctx: &egui::Context) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    fn handle_tray_action(&mut self, ctx: &egui::Context, action: TrayAction) {
+        match action {
+            TrayAction::ShowWindow => self.show_main_window(ctx),
+            TrayAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            TrayAction::ToggleScheme(id) => {
+                toggle_item(&mut self.manifest.root, &id, self.config.choice_mode);
+                let _ = self.manifest.save(&self.paths);
+                self.apply_hosts();
+                if let Some(tray) = &mut self.tray {
+                    tray.refresh(&self.manifest);
+                }
+                self.status_message = Some(format!("托盘已切换方案 {id}"));
+            }
+        }
+    }
+
+    fn poll_tray_events(&mut self, ctx: &egui::Context) {
+        while let Ok(event) = MenuEvent::receiver().try_recv() {
+            if let Some(tray) = &self.tray {
+                if let Some(action) = tray.map_menu_event(&event) {
+                    self.handle_tray_action(ctx, action);
+                }
+            }
+        }
+        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+            if let Some(action) = TrayController::map_tray_event(&event) {
+                self.handle_tray_action(ctx, action);
+            }
+        }
+    }
 }
 
 impl eframe::App for SwitchHostsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll_tray_events(ctx);
+
+        if self.config.tray_mini_window && self.tray.is_some() {
+            if ctx.input(|i| i.viewport().close_requested()) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
+        }
+
         if self.test_mode {
             egui::TopBottomPanel::top("test_banner").show(ctx, |ui| {
                 ui.colored_label(
@@ -103,6 +155,9 @@ impl eframe::App for SwitchHostsApp {
 
         if draw_preferences(ctx, &mut self.show_preferences, &mut self.config) {
             let _ = self.config.save(&self.paths.config_file);
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = crate::lifecycle::sync_launch_at_login(&self.config, &exe);
+            }
             self.status_message = Some("偏好设置已保存".into());
         }
 
@@ -129,6 +184,9 @@ impl eframe::App for SwitchHostsApp {
                 } else if draw_tree(ui, &mut self.manifest, &mut self.selected_id, &self.config) {
                     self.reload_editor();
                     let _ = self.manifest.save(&self.paths);
+                    if let Some(tray) = &mut self.tray {
+                        tray.refresh(&self.manifest);
+                    }
                 }
             });
 
