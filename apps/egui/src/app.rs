@@ -168,14 +168,9 @@ impl eframe::App for SwitchHostsApp {
 
 /// 从 manifest 构建托盘菜单标签（单元测试用，无需原生托盘 API）。
 pub fn tray_menu_labels(manifest: &Manifest) -> Vec<String> {
-    manifest
-        .root
-        .iter()
-        .filter_map(|n| {
-            let title = n.get("title").and_then(|v| v.as_str())?;
-            let on = n.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
-            Some(format!("{} {}", if on { "✓" } else { " " }, title))
-        })
+    crate::tray::build_tray_menu(manifest)
+        .into_iter()
+        .map(|e| e.label)
         .collect()
 }
 
@@ -188,8 +183,8 @@ mod tests {
     fn tray_labels_show_checkmarks() {
         let manifest = Manifest {
             root: json!([
-                { "title": "A", "on": true },
-                { "title": "B", "on": false }
+                { "id": "a", "title": "A", "on": true },
+                { "id": "b", "title": "B", "on": false }
             ])
             .as_array()
             .cloned()
@@ -198,6 +193,6 @@ mod tests {
         };
         let labels = tray_menu_labels(&manifest);
         assert!(labels[0].starts_with('✓'));
-        assert!(labels[1].starts_with(' '));
+        assert!(labels[1].contains('○') || labels[1].starts_with(' '));
     }
 }

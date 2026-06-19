@@ -9,7 +9,7 @@ fn tray_menu_label_helper() {
     use switch_hosts_core::storage::manifest::Manifest;
     use serde_json::json;
     let m = Manifest {
-        root: json!([{ "title": "X", "on": true }])
+        root: json!([{ "id": "x", "title": "X", "on": true }])
             .as_array()
             .cloned()
             .unwrap(),

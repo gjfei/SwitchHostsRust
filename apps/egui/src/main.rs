@@ -1,8 +1,5 @@
-mod app;
-mod panels;
-
-use app::SwitchHostsApp;
 use anyhow::Result;
+use egui_app::app::SwitchHostsApp;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
 use switch_hosts_core::storage::paths::AppPaths;
 use tracing_subscriber::EnvFilter;
