@@ -1,13 +1,26 @@
-use switch_hosts_core::hosts_edit::{parse_line_segments, TokenKind};
+use switch_hosts_core::hosts_edit::{parse_line_segments, toggle_line_comment, TokenKind};
 use eframe::egui;
 
 pub fn draw_editor(ui: &mut egui::Ui, text: &mut String, selected_id: Option<&str>) {
-    ui.label(format!(
-        "Editor{}",
-        selected_id
-            .map(|id| format!(" — {id}"))
-            .unwrap_or_default()
-    ));
+    ui.horizontal(|ui| {
+        ui.label(format!(
+            "编辑器{}",
+            selected_id
+                .map(|id| format!(" — {id}"))
+                .unwrap_or_default()
+        ));
+        if ui.button("切换行注释").on_hover_text("对首行切换 # 注释").clicked() {
+            if let Some(first) = text.lines().next() {
+                let toggled = toggle_line_comment(first);
+                if let Some(rest) = text.strip_prefix(first) {
+                    *text = format!("{toggled}{rest}");
+                } else {
+                    *text = toggled;
+                }
+            }
+        }
+    });
+
     ui.add(
         egui::TextEdit::multiline(text)
             .font(egui::TextStyle::Monospace)
@@ -16,7 +29,7 @@ pub fn draw_editor(ui: &mut egui::Ui, text: &mut String, selected_id: Option<&st
     );
 
     ui.separator();
-    ui.label("Preview (first 5 lines):");
+    ui.label("语法预览（前 5 行）");
     for line in text.lines().take(5) {
         ui.horizontal(|ui| {
             for seg in parse_line_segments(line) {
