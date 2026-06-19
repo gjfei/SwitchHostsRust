@@ -1,10 +1,10 @@
 use switch_hosts_core::hosts_apply::elevation::SystemElevation;
 use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
-use switch_hosts_core::manifest_edit::{add_parent_for_selection, SYSTEM_NODE_ID};
+use switch_hosts_core::manifest_edit::{add_parent_for_selection, insert_node, remove_node_with_parent, SYSTEM_NODE_ID};
 use switch_hosts_core::storage::config::AppConfig;
-use switch_hosts_core::storage::entries;
-use switch_hosts_core::storage::manifest::{find_node, Manifest};
+use switch_hosts_core::storage::entries::{self, delete_entry};
+use switch_hosts_core::storage::manifest::{collect_content_ids, find_node, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
@@ -15,9 +15,11 @@ use tray_icon::TrayIconEvent;
 
 use crate::panels::{
     draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace, draw_hosts_sidebar,
-    draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_panel,
-    editor_status, EditHostsResult, EditHostsState, FindReplaceState, NavView, TreeEvent,
+    draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
+    draw_trash_delete_confirm, draw_trash_panel, editor_status, EditHostsResult, EditHostsState, FindReplaceState, NavView,
+    TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
+use crate::remote_refresh::refresh_remote_node;
 use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
 use crate::tray_native::{TrayAction, TrayController};
 
@@ -38,6 +40,8 @@ pub struct SwitchHostsApp {
     find_replace: FindReplaceState,
     tray: Option<TrayController>,
     editor_dirty: bool,
+    pending_trash_delete: Option<String>,
+    pending_trash_clear: bool,
     #[cfg(target_os = "macos")]
     traffic_lights_positioned: bool,
 }
@@ -72,6 +76,8 @@ impl SwitchHostsApp {
             find_replace: FindReplaceState::default(),
             tray,
             editor_dirty: false,
+            pending_trash_delete: None,
+            pending_trash_clear: false,
             #[cfg(target_os = "macos")]
             traffic_lights_positioned: false,
         };
@@ -139,6 +145,15 @@ impl SwitchHostsApp {
                     self.edit_hosts.open_edit(&node);
                 }
             }
+            TreeEvent::AddRequested => {
+                let parent_id = add_parent_for_selection(
+                    &self.manifest.root,
+                    self.selected_id.as_deref(),
+                );
+                self.edit_hosts.open_add(parent_id);
+            }
+            TreeEvent::MoveToTrashRequested(ids) => self.move_nodes_to_trash(&ids),
+            TreeEvent::RefreshRequested(id) => self.refresh_remote_hosts(&id),
             TreeEvent::Toggled | TreeEvent::CollapsedChanged => {
                 self.persist_manifest();
                 if matches!(event, TreeEvent::Toggled) {
@@ -146,6 +161,114 @@ impl SwitchHostsApp {
                 }
             }
         }
+    }
+
+    fn move_nodes_to_trash(&mut self, ids: &[String]) {
+        let mut moved = false;
+        for id in ids {
+            if id == SYSTEM_NODE_ID {
+                continue;
+            }
+            if let Some((node, parent_id)) = remove_node_with_parent(&mut self.manifest.root, id) {
+                self.trashcan.push(TrashItem {
+                    id: id.clone(),
+                    node,
+                    parent_id,
+                    deleted_at: None,
+                });
+                if self.selected_id.as_deref() == Some(id.as_str()) {
+                    self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+                    self.reload_editor();
+                }
+                moved = true;
+            }
+        }
+        if moved {
+            let _ = self.trashcan.save(&self.paths.trashcan_file);
+            self.persist_manifest();
+        }
+    }
+
+    fn refresh_remote_hosts(&mut self, id: &str) {
+        match refresh_remote_node(&self.paths, &mut self.manifest, &self.config, id) {
+            Ok(content_changed) => {
+                self.persist_manifest();
+                if content_changed && self.selected_id.as_deref() == Some(id) {
+                    self.reload_editor();
+                    self.apply_hosts();
+                }
+            }
+            Err(message) => {
+                tracing::warn!("refresh remote hosts failed: {message}");
+            }
+        }
+    }
+
+    fn on_trash_event(&mut self, event: TrashEvent) {
+        match event {
+            TrashEvent::None => {}
+            TrashEvent::SelectionChanged => self.reload_editor(),
+            TrashEvent::RestoreRequested(id) => self.restore_from_trash(&id),
+            TrashEvent::DeleteRequested(id) => {
+                self.pending_trash_delete = Some(id);
+            }
+            TrashEvent::ClearRequested => {
+                self.pending_trash_clear = true;
+            }
+        }
+    }
+
+    fn restore_from_trash(&mut self, id: &str) {
+        let Some(item) = self.trashcan.remove(id) else {
+            return;
+        };
+        insert_node(
+            &mut self.manifest.root,
+            item.node,
+            item.parent_id.as_deref(),
+        );
+        let _ = self.trashcan.save(&self.paths.trashcan_file);
+        self.persist_manifest();
+    }
+
+    fn permanently_delete_from_trash(&mut self, id: &str) {
+        let Some(item) = self.trashcan.remove(id) else {
+            return;
+        };
+        let mut content_ids = Vec::new();
+        collect_content_ids(std::slice::from_ref(&item.node), &mut content_ids);
+        for cid in content_ids {
+            let _ = delete_entry(&self.paths.entries_dir, &cid);
+        }
+        let _ = self.trashcan.save(&self.paths.trashcan_file);
+        if self.selected_id.as_deref() == Some(id) {
+            self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+            self.reload_editor();
+        }
+    }
+
+    fn clear_trashcan(&mut self) {
+        let mut content_ids = Vec::new();
+        for item in &self.trashcan.items {
+            collect_content_ids(std::slice::from_ref(&item.node), &mut content_ids);
+        }
+        for cid in content_ids {
+            let _ = delete_entry(&self.paths.entries_dir, &cid);
+        }
+        self.trashcan.items.clear();
+        let _ = self.trashcan.save(&self.paths.trashcan_file);
+        self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+        self.reload_editor();
+    }
+
+    fn trash_delete_title(&self, id: &str) -> String {
+        self.trashcan
+            .items
+            .iter()
+            .find(|i| i.id == id)
+            .and_then(|i| i.node.get("title").and_then(|v| v.as_str()))
+            .unwrap_or(id)
+            .to_string()
     }
 
     fn show_main_window(&self, ctx: &egui::Context) {
@@ -274,7 +397,12 @@ impl eframe::App for SwitchHostsApp {
             self.reload_editor();
         }
 
-        let nav_action = draw_navigation(ctx, &mut self.nav_view, self.hosts_list_visible);
+        let nav_action = draw_navigation(
+            ctx,
+            &mut self.nav_view,
+            self.hosts_list_visible,
+            self.trashcan.items.len(),
+        );
         if nav_action.open_settings {
             self.show_preferences = true;
         }
@@ -315,7 +443,10 @@ impl eframe::App for SwitchHostsApp {
                         );
                         self.on_tree_event(event);
                     }
-                    NavView::Trash => draw_trash_panel(ui, &self.trashcan),
+                    NavView::Trash => {
+                        let event = draw_trash_panel(ui, &self.trashcan, &mut self.selected_id);
+                        self.on_trash_event(event);
+                    }
                 });
         }
 
@@ -358,7 +489,7 @@ impl eframe::App for SwitchHostsApp {
                 self.reload_editor();
                 self.persist_manifest();
             }
-            EditHostsResult::MovedToTrash { node } => {
+            EditHostsResult::MovedToTrash { node, parent_id } => {
                 let id = node
                     .get("id")
                     .and_then(|v| v.as_str())
@@ -367,6 +498,7 @@ impl eframe::App for SwitchHostsApp {
                 self.trashcan.push(TrashItem {
                     id: id.clone(),
                     node,
+                    parent_id,
                     deleted_at: None,
                 });
                 let _ = self.trashcan.save(&self.paths.trashcan_file);
@@ -376,6 +508,33 @@ impl eframe::App for SwitchHostsApp {
             }
             EditHostsResult::Cancelled => {}
             EditHostsResult::None => {}
+        }
+
+        if self.pending_trash_clear {
+            match draw_trash_clear_confirm(ctx) {
+                TrashDeleteConfirmResult::Confirmed(_) => {
+                    self.clear_trashcan();
+                    self.pending_trash_clear = false;
+                }
+                TrashDeleteConfirmResult::Cancelled => {
+                    self.pending_trash_clear = false;
+                }
+                TrashDeleteConfirmResult::None => {}
+            }
+        }
+
+        if let Some(id) = self.pending_trash_delete.clone() {
+            let title = self.trash_delete_title(&id);
+            match draw_trash_delete_confirm(ctx, &id, &title) {
+                TrashDeleteConfirmResult::Confirmed(deleted_id) => {
+                    self.permanently_delete_from_trash(&deleted_id);
+                    self.pending_trash_delete = None;
+                }
+                TrashDeleteConfirmResult::Cancelled => {
+                    self.pending_trash_delete = None;
+                }
+                TrashDeleteConfirmResult::None => {}
+            }
         }
     }
 }

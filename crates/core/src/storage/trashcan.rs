@@ -16,6 +16,8 @@ pub struct Trashcan {
 pub struct TrashItem {
     pub id: String,
     pub node: Value,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
     #[serde(default, rename = "deletedAt")]
     pub deleted_at: Option<String>,
 }
@@ -64,6 +66,7 @@ mod tests {
         t.push(TrashItem {
             id: "1".into(),
             node: json!({"id":"1","type":"local"}),
+            parent_id: None,
             deleted_at: None,
         });
         t.save(&path).unwrap();

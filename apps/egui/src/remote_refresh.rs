@@ -1,0 +1,78 @@
+//! 远程方案刷新（对齐 SwitchHosts `refresh_remote_hosts`）。
+
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use serde_json::json;
+use service::{fetch_url, ClientConfig};
+use switch_hosts_core::storage::config::AppConfig;
+use switch_hosts_core::storage::entries::{read_entry, write_entry};
+use switch_hosts_core::storage::manifest::{find_node, Manifest};
+use switch_hosts_core::storage::paths::AppPaths;
+
+pub fn refresh_remote_node(
+    paths: &AppPaths,
+    manifest: &mut Manifest,
+    config: &AppConfig,
+    id: &str,
+) -> Result<bool, String> {
+    let snapshot = find_node(&manifest.root, id).ok_or_else(|| "节点不存在".to_string())?;
+    if snapshot.get("type").and_then(|v| v.as_str()) != Some("remote") {
+        return Err("不是远程方案".to_string());
+    }
+    let url = snapshot
+        .get("url")
+        .and_then(|v| v.as_str())
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| "未设置 URL".to_string())?;
+
+    let client_cfg = ClientConfig {
+        use_proxy: config.use_proxy,
+        proxy_protocol: config.proxy_protocol.clone(),
+        proxy_host: config.proxy_host.clone(),
+        proxy_port: config.proxy_port,
+        timeout: Duration::from_secs(30),
+    };
+
+    let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+    let new_content = rt
+        .block_on(fetch_url(url, &client_cfg))
+        .map_err(|e| e.to_string())?;
+
+    let old_content = read_entry(&paths.entries_dir, id).unwrap_or_default();
+    let content_changed = new_content != old_content;
+    if content_changed {
+        write_entry(&paths.entries_dir, id, &new_content).map_err(|e| e.to_string())?;
+    }
+
+    touch_last_refresh(manifest, id);
+    Ok(content_changed)
+}
+
+fn touch_last_refresh(manifest: &mut Manifest, id: &str) {
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    touch_last_refresh_recursive(&mut manifest.root, id, ms);
+}
+
+fn touch_last_refresh_recursive(nodes: &mut [serde_json::Value], id: &str, ms: u64) -> bool {
+    for node in nodes.iter_mut() {
+        if node.get("id").and_then(|v| v.as_str()) == Some(id) {
+            if let Some(obj) = node.as_object_mut() {
+                obj.insert("last_refresh_ms".into(), json!(ms));
+            }
+            return true;
+        }
+        if let Some(children) = node
+            .as_object_mut()
+            .and_then(|o| o.get_mut("children"))
+            .and_then(|c| c.as_array_mut())
+        {
+            if touch_last_refresh_recursive(children, id, ms) {
+                return true;
+            }
+        }
+    }
+    false
+}

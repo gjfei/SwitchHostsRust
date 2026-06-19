@@ -1,7 +1,7 @@
 //! 右侧滑出面板：添加/编辑 hosts（对齐 `EditHostsInfo.tsx`）。
 
 use switch_hosts_core::manifest_edit::{
-    add_draft, ensure_folder_expanded, list_includable_nodes, remove_node_by_id,
+    add_draft, ensure_folder_expanded, list_includable_nodes, remove_node_with_parent,
     update_node_in_root, HostsNodeDraft, HostsNodeKind, REFRESH_INTERVALS,
 };
 use switch_hosts_core::storage::manifest::Manifest;
@@ -65,7 +65,10 @@ pub enum EditHostsResult {
     None,
     Cancelled,
     Saved { id: String },
-    MovedToTrash { node: serde_json::Value },
+    MovedToTrash {
+        node: serde_json::Value,
+        parent_id: Option<String>,
+    },
 }
 
 pub fn draw_edit_hosts_drawer(
@@ -152,11 +155,12 @@ pub fn draw_edit_hosts_drawer(
                         if !is_add {
                             if trash_button(ui).clicked() {
                                 if let Some(EditHostsMode::Edit { id }) = state.mode.clone() {
-                                    if let Some(node) = remove_node_by_id(&mut manifest.root, &id)
+                                    if let Some((node, parent_id)) =
+                                        remove_node_with_parent(&mut manifest.root, &id)
                                     {
                                         let _ = manifest.save(paths);
                                         state.open = false;
-                                        result = EditHostsResult::MovedToTrash { node };
+                                        result = EditHostsResult::MovedToTrash { node, parent_id };
                                     }
                                 }
                             }

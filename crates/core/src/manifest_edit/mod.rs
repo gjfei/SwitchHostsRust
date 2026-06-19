@@ -348,23 +348,43 @@ fn update_node_recursive(nodes: &mut [Value], id: &str, draft: &HostsNodeDraft) 
     false
 }
 
-/// 从树中移除节点并返回被移除的节点。
-pub fn remove_node_by_id(root: &mut Vec<Value>, id: &str) -> Option<Value> {
-    if let Some(pos) = root.iter().position(|n| n.get("id").and_then(|v| v.as_str()) == Some(id)) {
-        return Some(root.remove(pos));
+/// 从树中移除节点，并返回被移除节点及其父文件夹 id（根级为 `None`）。
+pub fn remove_node_with_parent(
+    root: &mut Vec<Value>,
+    id: &str,
+) -> Option<(Value, Option<String>)> {
+    remove_node_with_parent_inner(root, id, None)
+}
+
+fn remove_node_with_parent_inner(
+    nodes: &mut Vec<Value>,
+    id: &str,
+    parent_id: Option<&str>,
+) -> Option<(Value, Option<String>)> {
+    if let Some(pos) = nodes.iter().position(|n| n.get("id").and_then(|v| v.as_str()) == Some(id)) {
+        let removed = nodes.remove(pos);
+        return Some((removed, parent_id.map(str::to_string)));
     }
-    for node in root.iter_mut() {
+    for node in nodes.iter_mut() {
+        let this_id = node.get("id").and_then(|v| v.as_str()).map(str::to_string);
         if let Some(children) = node
             .as_object_mut()
             .and_then(|o| o.get_mut("children"))
             .and_then(|c| c.as_array_mut())
         {
-            if let Some(removed) = remove_node_by_id(children, id) {
-                return Some(removed);
+            if let Some(result) =
+                remove_node_with_parent_inner(children, id, this_id.as_deref())
+            {
+                return Some(result);
             }
         }
     }
     None
+}
+
+/// 从树中移除节点并返回被移除的节点。
+pub fn remove_node_by_id(root: &mut Vec<Value>, id: &str) -> Option<Value> {
+    remove_node_with_parent(root, id).map(|(node, _)| node)
 }
 
 /// 组合类型可选的 local/remote 节点列表 `(id, title, kind)`。

@@ -1303,6 +1303,7 @@ dependencies = [
  "serde_json",
  "service",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "tray-icon",

@@ -28,6 +28,9 @@ pub enum TreeEvent {
     Toggled,
     CollapsedChanged,
     EditRequested(String),
+    AddRequested,
+    MoveToTrashRequested(Vec<String>),
+    RefreshRequested(String),
 }
 
 pub fn draw_hosts_tree(
@@ -39,9 +42,18 @@ pub fn draw_hosts_tree(
     let mut event = TreeEvent::None;
     let mut pending_toggle_id = None;
 
-    egui::ScrollArea::vertical()
+    let _scroll = egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
+            let bg = ui.available_rect_before_wrap();
+            let bg_resp = ui.interact(bg, ui.id().with("tree_bg"), Sense::click());
+            bg_resp.context_menu(|ui| {
+                if menu_item(ui, "添加方案").clicked() {
+                    event = TreeEvent::AddRequested;
+                    ui.close_menu();
+                }
+            });
+
             ui.spacing_mut().item_spacing.y = TREE_ROW_GAP;
             if draw_system_row(ui, selected_id, &mut event) {
                 // system selected
@@ -176,10 +188,10 @@ fn render_row(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let is_selected = selected_id.as_deref() == Some(id.as_str());
+    let is_remote = node.get("type").and_then(|v| v.as_str()) == Some("remote");
 
     let indent = depth as f32 * TREE_INDENT + TREE_INDENT_PAD;
     let row_width = ui.available_width();
-    // 背景与 hover 检测必须用同一 rect（allocate_exact_size 返回的小 rect 与 response.rect 可能不一致）
     let response = ui.allocate_response(Vec2::new(row_width, TREE_ROW_HEIGHT), Sense::click());
     let rect = response.rect;
 
@@ -308,10 +320,46 @@ fn render_row(
         }
     }
 
+    if !is_system {
+        response.context_menu(|ui| {
+            hosts_item_context_menu(ui, &id, is_remote, selected_id, event);
+        });
+    }
+
     if response.clicked() && !switch_clicked {
         *selected_id = Some(id);
         *event = TreeEvent::SelectionChanged;
     }
+}
+
+fn hosts_item_context_menu(
+    ui: &mut Ui,
+    id: &str,
+    is_remote: bool,
+    _selected_id: &Option<String>,
+    event: &mut TreeEvent,
+) {
+    if menu_item(ui, "编辑").clicked() {
+        *event = TreeEvent::EditRequested(id.to_string());
+        ui.close_menu();
+    }
+    if is_remote && menu_item(ui, "刷新").clicked() {
+        *event = TreeEvent::RefreshRequested(id.to_string());
+        ui.close_menu();
+    }
+    ui.separator();
+    if menu_item(ui, "移至回收站").clicked() {
+        *event = TreeEvent::MoveToTrashRequested(vec![id.to_string()]);
+        ui.close_menu();
+    }
+}
+
+fn menu_item(ui: &mut Ui, label: &str) -> egui::Response {
+    ui.add(
+        egui::Button::new(label)
+            .frame(false)
+            .fill(egui::Color32::TRANSPARENT),
+    )
 }
 
 /// 绘制方案列表面板。
@@ -321,7 +369,6 @@ pub fn draw_hosts_sidebar(
     selected_id: &mut Option<String>,
     config: &AppConfig,
 ) -> TreeEvent {
-    // 对齐原版 LeftPanel `.content { padding: 5px 10px }`
     egui::Frame::new()
         .fill(SIDEBAR_BG)
         .inner_margin(egui::Margin::symmetric(10, 5))

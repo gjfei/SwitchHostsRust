@@ -5,6 +5,7 @@ pub mod lifecycle;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod panels;
+pub mod remote_refresh;
 pub mod theme;
 pub mod tray;
 pub mod tray_native;

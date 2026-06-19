@@ -66,6 +66,23 @@ pub const NAV_ICON_ACTIVE_BG: Color32 = TREE_HOVER;
 /// ActionIcon `variant="subtle" color="gray"`
 pub const NAV_ICON_INACTIVE_TINT: Color32 = Color32::from_rgb(100, 100, 110);
 pub const NAV_ICON_HOVER_BG: Color32 = TOP_BAR_ICON_HOVER;
+/// Indicator `color="gray" size={14} offset={4}`
+pub const NAV_BADGE_SIZE: f32 = 14.0;
+pub const NAV_BADGE_OFFSET: f32 = 4.0;
+/// Mantine `gray` indicator
+pub const NAV_BADGE_BG: Color32 = Color32::from_rgb(134, 142, 150);
+pub const NAV_BADGE_TEXT: Color32 = Color32::WHITE;
+pub const NAV_BADGE_FONT_SIZE: f32 = 10.0;
+
+/// Trashcan header（`Trashcan.module.scss` `.header_title`）
+pub const TRASH_HEADER_HEIGHT: f32 = 28.0;
+pub const TRASH_HEADER_PAD_X: f32 = 10.0;
+pub const TRASH_HEADER_FONT_SIZE: f32 = 12.0;
+pub const TRASH_HEADER_TEXT: Color32 = Color32::from_rgb(153, 153, 153);
+pub const TRASH_BODY_PAD_X: f32 = 10.0;
+pub const TRASH_BODY_PAD_Y: f32 = 5.0;
+pub const TRASH_CLEAR_ICON: f32 = 16.0;
+pub const TRASH_CLEAR_HIT: f32 = 24.0;
 
 /// 列表字体 body `0.875rem` @ 16px root
 pub const TREE_FONT_SIZE: f32 = 14.0;

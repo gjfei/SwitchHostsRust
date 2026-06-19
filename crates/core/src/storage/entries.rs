@@ -25,6 +25,17 @@ pub fn write_entry(entries_dir: &Path, id: &str, content: &str) -> Result<(), St
     fs::write(&path, content).map_err(|e| StorageError::io(path.display().to_string(), e))
 }
 
+pub fn delete_entry(entries_dir: &Path, id: &str) -> Result<(), StorageError> {
+    if id == SYSTEM_NODE_ID {
+        return Ok(());
+    }
+    let path = entries_dir.join(format!("{id}.hosts"));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| StorageError::io(path.display().to_string(), e))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

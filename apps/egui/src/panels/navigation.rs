@@ -1,11 +1,12 @@
 //! 最左侧图标导航栏（对齐 `LeftSidebar`）。
 
-use eframe::egui::{self, Color32, Sense, Vec2};
+use eframe::egui::{self, Color32, FontId, Sense, Ui, Vec2};
 
 use crate::icons::{self, Icon};
 use crate::theme::{
-    ACCENT, NAV_ICON_ACTIVE_BG, NAV_ICON_GAP, NAV_ICON_HIT, NAV_ICON_HOVER_BG,
-    NAV_ICON_INACTIVE_TINT, NAV_ICON_PAD_BOTTOM, NAV_ICON_RADIUS, NAV_ICON_SIZE, WINDOW_BG,
+    ACCENT, NAV_BADGE_BG, NAV_BADGE_FONT_SIZE, NAV_BADGE_OFFSET, NAV_BADGE_SIZE, NAV_BADGE_TEXT,
+    NAV_ICON_ACTIVE_BG, NAV_ICON_GAP, NAV_ICON_HIT, NAV_ICON_HOVER_BG, NAV_ICON_INACTIVE_TINT,
+    NAV_ICON_PAD_BOTTOM, NAV_ICON_RADIUS, NAV_ICON_SIZE, WINDOW_BG,
 };
 
 /// 当前主导航视图。
@@ -30,6 +31,7 @@ pub fn draw_navigation(
     ctx: &egui::Context,
     view: &mut NavView,
     hosts_list_visible: bool,
+    trash_count: usize,
 ) -> NavAction {
     let mut action = NavAction::default();
 
@@ -44,7 +46,7 @@ pub fn draw_navigation(
                         panel_nav_click(NavView::Hosts, view, hosts_list_visible);
                 }
                 ui.add_space(NAV_ICON_GAP);
-                if nav_icon(ui, Icon::Trash, *view == NavView::Trash).clicked() {
+                if nav_trash_icon(ui, *view == NavView::Trash, trash_count).clicked() {
                     action.left_panel_visible =
                         panel_nav_click(NavView::Trash, view, hosts_list_visible);
                 }
@@ -86,8 +88,40 @@ fn panel_nav_click(
     }
 }
 
+fn nav_trash_icon(ui: &mut Ui, active: bool, count: usize) -> egui::Response {
+    let response = nav_icon(ui, Icon::Trash, active);
+    if count > 0 && ui.is_rect_visible(response.rect) {
+        paint_trash_count_badge(ui, response.rect, count);
+    }
+    response
+}
+
+/// Mantine `Indicator` on trash ActionIcon（count 为 0 时不显示）。
+fn paint_trash_count_badge(ui: &Ui, icon_rect: egui::Rect, count: usize) {
+    let label = count.to_string();
+    let font_id = FontId::proportional(NAV_BADGE_FONT_SIZE);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label, font_id, NAV_BADGE_TEXT);
+    let pad_x = 4.0;
+    let badge_w = galley.size().x.max(6.0) + pad_x * 2.0;
+    let badge_h = NAV_BADGE_SIZE;
+    let anchor = icon_rect.right_top() + Vec2::new(NAV_BADGE_OFFSET, -NAV_BADGE_OFFSET);
+    let badge_rect = egui::Rect::from_min_size(
+        egui::pos2(anchor.x - badge_w, anchor.y),
+        Vec2::new(badge_w, badge_h),
+    );
+    let radius = badge_h * 0.5;
+    ui.painter().rect_filled(badge_rect, radius, NAV_BADGE_BG);
+    ui.painter().galley(
+        badge_rect.center() - galley.size() * 0.5,
+        galley,
+        NAV_BADGE_TEXT,
+    );
+}
+
 /// Mantine ActionIcon：`light`（选中）/ `subtle`（默认 + hover 灰底）。
-fn nav_icon(ui: &mut egui::Ui, icon: Icon, active: bool) -> egui::Response {
+fn nav_icon(ui: &mut Ui, icon: Icon, active: bool) -> egui::Response {
     let hit = Vec2::splat(NAV_ICON_HIT);
     let (rect, response) = ui.allocate_exact_size(hit, Sense::click());
     if ui.is_rect_visible(rect) {
