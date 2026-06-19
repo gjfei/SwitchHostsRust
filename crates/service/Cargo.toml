@@ -29,3 +29,7 @@ pretty_assertions.workspace = true
 [[test]]
 name = "client_integration"
 path = "tests/client_integration.rs"
+
+[[test]]
+name = "api_integration"
+path = "tests/api_integration.rs"
