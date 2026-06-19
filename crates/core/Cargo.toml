@@ -30,3 +30,11 @@ pretty_assertions.workspace = true
 [[test]]
 name = "storage_integration"
 path = "tests/storage_integration.rs"
+
+[[test]]
+name = "apply_integration"
+path = "tests/apply_integration.rs"
+
+[[test]]
+name = "toggle_integration"
+path = "tests/toggle_integration.rs"
