@@ -21,6 +21,15 @@ cargo run -p cli -- apply
 cargo run -p cli -- apply --system   # 写入系统 hosts
 ```
 
+## GUI
+
+```bash
+cargo run -p egui-app                              # Debug：写入 dev test.hosts
+cargo run -p egui-app -- --system                  # 写入系统 /etc/hosts
+cargo run -p egui-app -- --hosts-file /path/hosts  # 写入指定文件
+cargo run --release -p egui-app                    # Release 默认写入系统 hosts
+```
+
 ## Crates
 
 | Crate | 职责 |

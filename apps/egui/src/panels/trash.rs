@@ -6,6 +6,7 @@ use eframe::egui::{self, Color32, Sense, Stroke, Ui, Vec2};
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::drawer::{draw_confirm_modal, ConfirmModalResult};
+use crate::panels::menu::{self};
 use crate::panels::widgets::ellipsize_text;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{self, layout};
@@ -236,15 +237,14 @@ fn draw_trash_row(
     }
 
     let mut event = None;
-    response.context_menu(|ui| {
-        if trash_menu_item(ui, "恢复").clicked() {
+    menu::open_context_menu(ui, &response);
+    menu::show_context_menu_if_open(ui, &response, |m| {
+        if m.item("恢复") {
             event = Some(TrashEvent::RestoreRequested(item.id.clone()));
-            ui.close_menu();
         }
-        ui.separator();
-        if trash_menu_item(ui, "删除").clicked() {
+        m.divider();
+        if m.item("删除") {
             event = Some(TrashEvent::DeleteRequested(item.id.clone()));
-            ui.close_menu();
         }
     });
 
@@ -254,14 +254,6 @@ fn draw_trash_row(
     }
 
     event
-}
-
-fn trash_menu_item(ui: &mut Ui, label: &str) -> egui::Response {
-    ui.add(
-        egui::Button::new(label)
-            .frame(false)
-            .fill(Color32::TRANSPARENT),
-    )
 }
 
 /// 永久删除确认对话框（对齐 `ConfirmModal`）。

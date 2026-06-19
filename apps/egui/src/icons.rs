@@ -141,6 +141,15 @@ pub enum Icon {
     X,
     ChevronRight,
     ChevronDown,
+    InfoCircle,
+    Refresh,
+    Message2,
+    Home,
+    Upload,
+    Download,
+    CloudDownload,
+    Adjustments,
+    Logout,
 }
 
 impl Icon {
@@ -181,6 +190,15 @@ impl Icon {
             Self::X => egui::include_image!("../assets/icons/x.svg"),
             Self::ChevronRight => egui::include_image!("../assets/icons/chevron-right.svg"),
             Self::ChevronDown => egui::include_image!("../assets/icons/chevron-down.svg"),
+            Self::InfoCircle => egui::include_image!("../assets/icons/info-circle.svg"),
+            Self::Refresh => egui::include_image!("../assets/icons/refresh.svg"),
+            Self::Message2 => egui::include_image!("../assets/icons/message-2.svg"),
+            Self::Home => egui::include_image!("../assets/icons/home.svg"),
+            Self::Upload => egui::include_image!("../assets/icons/upload.svg"),
+            Self::Download => egui::include_image!("../assets/icons/download.svg"),
+            Self::CloudDownload => egui::include_image!("../assets/icons/cloud-download.svg"),
+            Self::Adjustments => egui::include_image!("../assets/icons/adjustments.svg"),
+            Self::Logout => egui::include_image!("../assets/icons/logout.svg"),
         }
     }
 }

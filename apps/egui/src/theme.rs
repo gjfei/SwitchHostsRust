@@ -336,6 +336,7 @@ fn build_visuals(t: &AppTheme) -> egui::Visuals {
 
     visuals.widgets.noninteractive.bg_fill = t.sidebar_bg;
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, t.text);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, t.separator);
     visuals.widgets.noninteractive.weak_bg_fill = t.icon_hover_bg;
     visuals.widgets.noninteractive.corner_radius = corner_sm;
 
@@ -346,7 +347,8 @@ fn build_visuals(t: &AppTheme) -> egui::Visuals {
     visuals.widgets.inactive.corner_radius = corner_sm;
 
     visuals.widgets.hovered.bg_fill = t.hover_bg;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5, t.text);
+    // SidePanel / 窗口拖拽分隔线在 hover 时使用 fg_stroke（对齐 SwitchHosts 红色 resize 提示）
+    visuals.widgets.hovered.fg_stroke = Stroke::new(2.0, t.accent);
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, t.input_border);
     visuals.widgets.hovered.weak_bg_fill = t.icon_hover_bg;
     visuals.widgets.hovered.corner_radius = corner_sm;

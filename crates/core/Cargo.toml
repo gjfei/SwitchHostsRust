@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "SwitchHostsRust core business logic"
+build = "build.rs"
 
 [lib]
 doctest = false
@@ -25,6 +26,9 @@ uuid.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 pretty_assertions.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
 
 
 

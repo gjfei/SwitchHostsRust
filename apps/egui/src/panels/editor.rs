@@ -10,6 +10,7 @@ use eframe::egui::text::{CCursor, CCursorRange, LayoutJob, TextFormat};
 use eframe::egui::widgets::text_edit::TextEditOutput;
 use eframe::egui::{self, Color32, FontId, Id, RichText, Sense, Stroke, TextStyle, Ui, Vec2};
 
+use crate::panels::status_bar::{draw_status_bar, editor_status, pin_body_and_status_bar};
 use crate::theme::{self, layout};
 
 const EDITOR_WIDGET_ID: &str = "hosts_code_editor";
@@ -102,6 +103,22 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
                     });
             });
     });
+}
+
+/// 编辑器 + 底部状态栏（对齐 `HostsEditor` `.root` 一体布局）。
+pub fn draw_editor_with_status_bar(
+    ui: &mut Ui,
+    text: &mut String,
+    manifest: &Manifest,
+    selected_id: Option<&str>,
+    pending_selection: &mut Option<(usize, usize)>,
+) {
+    let status = editor_status(manifest, selected_id, text);
+    pin_body_and_status_bar(
+        ui,
+        |ui| draw_editor_panel(ui, text, manifest, selected_id, pending_selection),
+        |ui| draw_status_bar(ui, &status),
+    );
 }
 
 pub fn draw_editor_panel(

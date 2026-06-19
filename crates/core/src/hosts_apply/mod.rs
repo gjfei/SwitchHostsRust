@@ -4,6 +4,7 @@ pub mod elevation;
 pub mod error;
 pub mod history;
 pub mod pipeline;
+pub mod platform_write;
 pub mod target;
 pub mod write;
 

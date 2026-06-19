@@ -8,24 +8,45 @@ use switch_hosts_core::storage::manifest::{collect_content_ids, find_node, Manif
 use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
-use eframe::egui;
+use eframe::egui::{self, Vec2};
 use raw_window_handle::HasWindowHandle;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
 use crate::config_effects::apply_config_side_effects;
+use crate::data_transfer::{
+    import_error_message, import_from_url as import_from_url_data, run_export_dialog,
+    run_import_dialog, ExportResult, ImportResult,
+};
 use crate::http_api_runtime::HttpApiRuntime;
 use crate::panels::{
-    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace_drawer, draw_history_drawer,
+    draw_details, draw_edit_hosts_drawer, draw_editor_with_status_bar, draw_find_replace_drawer,
+    draw_history_drawer,
     draw_hosts_sidebar,
-    draw_navigation, draw_preferences_drawer, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
-    draw_trash_delete_confirm, draw_trash_panel, editor_status, DetailsAction, EditHostsResult,
+    paint_list_panel_border,
+    draw_navigation, draw_panel_status_spacer, draw_preferences_drawer, draw_top_bar,
+    draw_trash_clear_confirm,
+    draw_trash_delete_confirm, draw_trash_panel, draw_import_from_url_modal, draw_import_error_modal,
+    draw_apply_error_modal,
+    DetailsAction, EditHostsResult,
     EditHostsState, FindReplaceAction, FindReplaceState, HistoryResult, HistoryState, NavView,
-    PreferencesAction, PreferencesState, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
+    ConfigMenuAction, ImportFromUrlResult, ImportFromUrlState, PreferencesAction, PreferencesState, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
 use crate::remote_refresh::{refresh_all_remote_hosts, refresh_remote_node};
 use crate::theme::{self, layout};
 use crate::tray_native::{TrayAction, TrayController};
+
+const FEEDBACK_URL: &str = "";
+const HOMEPAGE_URL: &str = "";
+
+fn open_url(url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    if let Err(err) = webbrowser::open(url) {
+        tracing::warn!("open url failed ({url}): {err}");
+    }
+}
 
 pub struct SwitchHostsApp {
     paths: AppPaths,
@@ -51,6 +72,9 @@ pub struct SwitchHostsApp {
     editor_dirty: bool,
     pending_trash_delete: Option<String>,
     pending_trash_clear: bool,
+    import_from_url: ImportFromUrlState,
+    import_error: Option<String>,
+    apply_error: Option<String>,
     #[cfg(target_os = "macos")]
     traffic_lights_positioned: bool,
 }
@@ -98,6 +122,9 @@ impl SwitchHostsApp {
             editor_dirty: false,
             pending_trash_delete: None,
             pending_trash_clear: false,
+            import_from_url: ImportFromUrlState::default(),
+            import_error: None,
+            apply_error: None,
             #[cfg(target_os = "macos")]
             traffic_lights_positioned: false,
         };
@@ -179,14 +206,39 @@ impl SwitchHostsApp {
         true
     }
 
-    fn apply_hosts(&mut self) {
+    fn apply_hosts(&mut self) -> bool {
         let elevation = SystemElevation;
         let pipeline = ApplyPipeline {
             paths: &self.paths,
             config: &self.config,
             elevation: &elevation,
         };
-        let _ = pipeline.apply(&self.manifest, &self.target);
+        match pipeline.apply(&self.manifest, &self.target) {
+            Ok(result) => {
+                if result.written && self.selected_id.as_deref() == Some(SYSTEM_NODE_ID) {
+                    self.reload_editor();
+                }
+                true
+            }
+            Err(err) => {
+                tracing::warn!("apply hosts failed: {err}");
+                self.apply_error = Some(err.user_message());
+                false
+            }
+        }
+    }
+
+    /// 切换方案并写入 hosts；写入失败时恢复切换前的 manifest。
+    fn toggle_and_apply_hosts(&mut self, id: &str) {
+        let before = self.manifest.clone();
+        if !toggle_item(&mut self.manifest.root, id, self.config.choice_mode) {
+            return;
+        }
+        self.persist_manifest();
+        if !self.apply_hosts() {
+            self.manifest = before;
+            self.persist_manifest();
+        }
     }
 
     fn persist_manifest(&mut self) {
@@ -214,12 +266,8 @@ impl SwitchHostsApp {
             }
             TreeEvent::MoveToTrashRequested(ids) => self.move_nodes_to_trash(&ids),
             TreeEvent::RefreshRequested(id) => self.refresh_remote_hosts(&id),
-            TreeEvent::Toggled | TreeEvent::CollapsedChanged => {
-                self.persist_manifest();
-                if matches!(event, TreeEvent::Toggled) {
-                    self.apply_hosts();
-                }
-            }
+            TreeEvent::ToggleRequested(id) => self.toggle_and_apply_hosts(&id),
+            TreeEvent::CollapsedChanged => self.persist_manifest(),
         }
     }
 
@@ -376,11 +424,7 @@ impl SwitchHostsApp {
         match action {
             TrayAction::ShowWindow => self.show_main_window(ctx),
             TrayAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-            TrayAction::ToggleScheme(id) => {
-                toggle_item(&mut self.manifest.root, &id, self.config.choice_mode);
-                self.persist_manifest();
-                self.apply_hosts();
-            }
+            TrayAction::ToggleScheme(id) => self.toggle_and_apply_hosts(&id),
         }
     }
 
@@ -395,6 +439,58 @@ impl SwitchHostsApp {
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if let Some(action) = TrayController::map_tray_event(&event) {
                 self.handle_tray_action(ctx, action);
+            }
+        }
+    }
+
+    fn reload_after_import(&mut self, ctx: &egui::Context) {
+        self.manifest = Manifest::load(&self.paths).unwrap_or_default();
+        self.trashcan = Trashcan::load(&self.paths.trashcan_file);
+        self.nav_view = NavView::Hosts;
+        self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+        self.reload_editor();
+        if let Some(tray) = &mut self.tray {
+            tray.refresh(&self.manifest);
+        }
+        self.apply_hosts();
+        ctx.request_repaint();
+    }
+
+    fn handle_import_result(&mut self, ctx: &egui::Context, result: ImportResult) {
+        match result {
+            ImportResult::Cancelled => {}
+            ImportResult::Success => self.reload_after_import(ctx),
+            ImportResult::SoftError(code) => {
+                tracing::warn!("import failed: {code}");
+                self.import_error = Some(import_error_message(&code));
+            }
+            ImportResult::HardError(err) => {
+                tracing::warn!("import failed: {err}");
+                self.import_error = Some(format!("导入失败：{err}"));
+            }
+        }
+    }
+
+    fn handle_config_menu_action(&mut self, ctx: &egui::Context, action: ConfigMenuAction) {
+        match action {
+            ConfigMenuAction::None => {}
+            ConfigMenuAction::OpenPreferences => self.preferences.open_drawer(),
+            ConfigMenuAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            ConfigMenuAction::OpenFeedback => open_url(FEEDBACK_URL),
+            ConfigMenuAction::OpenHomepage => open_url(HOMEPAGE_URL),
+            ConfigMenuAction::Export => match run_export_dialog(&self.paths) {
+                ExportResult::Cancelled => {}
+                ExportResult::Failed => tracing::warn!("export failed"),
+                ExportResult::Success(path) => {
+                    tracing::info!("exported to {}", path.display());
+                }
+            },
+            ConfigMenuAction::Import => {
+                self.handle_import_result(ctx, run_import_dialog(&self.paths));
+            }
+            ConfigMenuAction::ImportFromUrl => self.import_from_url.open_modal(),
+            other => {
+                tracing::info!("config menu action not implemented yet: {other:?}");
             }
         }
     }
@@ -439,7 +535,6 @@ impl eframe::App for SwitchHostsApp {
                     &self.selected_id,
                     self.hosts_list_visible,
                     self.config.right_panel_show,
-                    self.config.choice_mode,
                     self.config.use_system_window_frame,
                 );
                 if action.toggle_left_panel {
@@ -455,9 +550,8 @@ impl eframe::App for SwitchHostsApp {
                 if action.toggle_right_panel {
                     self.config.right_panel_show = !self.config.right_panel_show;
                 }
-                if action.toggled_current {
-                    self.persist_manifest();
-                    self.apply_hosts();
+                if let Some(id) = action.toggle_current_id {
+                    self.toggle_and_apply_hosts(&id);
                 }
             });
 
@@ -535,9 +629,7 @@ impl eframe::App for SwitchHostsApp {
         if nav_action.open_history {
             self.history.open_drawer();
         }
-        if nav_action.open_settings {
-            self.preferences.open_drawer();
-        }
+        self.handle_config_menu_action(ctx, nav_action.config_menu);
         if nav_action.open_search {
             self.find_replace.open_drawer();
         }
@@ -545,40 +637,40 @@ impl eframe::App for SwitchHostsApp {
             self.hosts_list_visible = visible;
         }
 
-        egui::TopBottomPanel::bottom("status_bar")
-            .exact_height(layout::STATUS_BAR_HEIGHT)
-            .frame(
-                egui::Frame::new()
-                    .fill(t.sidebar_bg)
-                    .inner_margin(0.0),
-            )
-            .show(ctx, |ui| {
-                let status = editor_status(
-                    &self.manifest,
-                    self.selected_id.as_deref(),
-                    &self.editor_text,
-                );
-                draw_status_bar(ui, &status);
-            });
-
         if self.hosts_list_visible {
             egui::SidePanel::left("hosts_sidebar")
                 .default_width(self.config.left_panel_width as f32)
                 .frame(egui::Frame::new().fill(t.sidebar_bg))
-                .show(ctx, |ui| match self.nav_view {
-                    NavView::Hosts => {
-                        let event = draw_hosts_sidebar(
-                            ui,
-                            &mut self.manifest,
-                            &mut self.selected_id,
-                            &self.config,
+                .show(ctx, |ui| {
+                    paint_list_panel_border(ui);
+                    ui.vertical(|ui| {
+                        let body_h =
+                            (ui.available_height() - layout::STATUS_BAR_HEIGHT).max(0.0);
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(ui.available_width(), body_h),
+                            egui::Layout::top_down(egui::Align::LEFT),
+                            |ui| match self.nav_view {
+                                NavView::Hosts => {
+                                    let event = draw_hosts_sidebar(
+                                        ui,
+                                        &mut self.manifest,
+                                        &mut self.selected_id,
+                                        &self.config,
+                                    );
+                                    self.on_tree_event(event);
+                                }
+                                NavView::Trash => {
+                                    let event = draw_trash_panel(
+                                        ui,
+                                        &self.trashcan,
+                                        &mut self.selected_id,
+                                    );
+                                    self.on_trash_event(event);
+                                }
+                            },
                         );
-                        self.on_tree_event(event);
-                    }
-                    NavView::Trash => {
-                        let event = draw_trash_panel(ui, &self.trashcan, &mut self.selected_id);
-                        self.on_trash_event(event);
-                    }
+                        draw_panel_status_spacer(ui);
+                    });
                 });
         }
 
@@ -587,16 +679,29 @@ impl eframe::App for SwitchHostsApp {
                 .default_width(self.config.right_panel_width as f32)
                 .frame(egui::Frame::new().fill(t.window_bg).inner_margin(0.0))
                 .show(ctx, |ui| {
-                    let action = draw_details(
-                        ui,
-                        &self.manifest,
-                        &self.trashcan,
-                        self.nav_view,
-                        self.selected_id.as_deref(),
-                        &self.editor_text,
-                        &self.target.path().display().to_string(),
-                    );
-                    self.on_details_action(action);
+                    ui.vertical(|ui| {
+                        let body_h =
+                            (ui.available_height() - layout::STATUS_BAR_HEIGHT).max(0.0);
+                        let action = ui
+                            .allocate_ui_with_layout(
+                                Vec2::new(ui.available_width(), body_h),
+                                egui::Layout::top_down(egui::Align::LEFT),
+                                |ui| {
+                                    draw_details(
+                                        ui,
+                                        &self.manifest,
+                                        &self.trashcan,
+                                        self.nav_view,
+                                        self.selected_id.as_deref(),
+                                        &self.editor_text,
+                                        &self.target.path().display().to_string(),
+                                    )
+                                },
+                            )
+                            .inner;
+                        self.on_details_action(action);
+                        draw_panel_status_spacer(ui);
+                    });
                 });
         }
 
@@ -604,7 +709,7 @@ impl eframe::App for SwitchHostsApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(t.editor_bg).inner_margin(0.0))
             .show(ctx, |ui| {
-                draw_editor_panel(
+                draw_editor_with_status_bar(
                     ui,
                     &mut self.editor_text,
                     &self.manifest,
@@ -660,6 +765,28 @@ impl eframe::App for SwitchHostsApp {
                 let _ = self.config.save(&self.paths.config_file);
             }
             HistoryResult::Closed | HistoryResult::None => {}
+        }
+
+        match draw_import_from_url_modal(ctx, &mut self.import_from_url) {
+            ImportFromUrlResult::None | ImportFromUrlResult::Cancelled => {}
+            ImportFromUrlResult::Confirmed(url) => {
+                self.handle_import_result(
+                    ctx,
+                    import_from_url_data(&url, &self.paths, &self.config),
+                );
+            }
+        }
+
+        if let Some(message) = self.import_error.clone() {
+            if draw_import_error_modal(ctx, &message) {
+                self.import_error = None;
+            }
+        }
+
+        if let Some(message) = self.apply_error.clone() {
+            if draw_apply_error_modal(ctx, &message) {
+                self.apply_error = None;
+            }
         }
 
         if self.pending_trash_clear {

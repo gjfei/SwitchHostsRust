@@ -3,6 +3,8 @@
 use eframe::egui::{self, Color32, FontId, Sense, Ui, Vec2};
 
 use crate::icons::{self, Icon};
+use crate::panels::config_menu::{show_config_menu, ConfigMenuAction};
+use crate::panels::menu::is_menu_open;
 use crate::theme::{self, layout};
 
 /// 当前主导航视图。
@@ -18,7 +20,7 @@ pub enum NavView {
 pub struct NavAction {
     pub open_search: bool,
     pub open_history: bool,
-    pub open_settings: bool,
+    pub config_menu: ConfigMenuAction,
     /// 侧栏显隐变更（`Some(true)` 展开 / `Some(false)` 收起）。
     pub left_panel_visible: Option<bool>,
 }
@@ -34,6 +36,8 @@ pub fn draw_navigation(
 
     egui::SidePanel::left("nav_rail")
         .exact_width(layout::NAV_WIDTH)
+        .resizable(false)
+        .show_separator_line(false)
         .frame(egui::Frame::new().fill(t.window_bg))
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
@@ -49,9 +53,11 @@ pub fn draw_navigation(
                 }
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                    if nav_icon(ui, Icon::Settings, false).clicked() {
-                        action.open_settings = true;
-                    }
+                    let popup_id = ui.make_persistent_id("config_menu");
+                    let menu_open = is_menu_open(ui, popup_id);
+                    let settings =
+                        nav_icon(ui, Icon::Settings, menu_open).on_hover_text("设置");
+                    action.config_menu = show_config_menu(ui, &settings);
                     ui.add_space(layout::NAV_ICON_GAP);
                     if nav_icon(ui, Icon::History, false).clicked() {
                         action.open_history = true;

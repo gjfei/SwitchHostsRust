@@ -2,7 +2,6 @@
 
 use switch_hosts_core::manifest_edit::{is_editor_read_only, SYSTEM_NODE_ID};
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
-use switch_hosts_core::toggle::toggle_item;
 use eframe::egui::{self, Align2, Color32, FontId, PointerButton, Sense, Ui, Vec2, ViewportCommand};
 
 use crate::fonts::ui_font_id;
@@ -15,7 +14,7 @@ pub struct TopBarAction {
     pub toggle_left_panel: bool,
     pub add_new: bool,
     pub toggle_right_panel: bool,
-    pub toggled_current: bool,
+    pub toggle_current_id: Option<String>,
 }
 
 const BAR_ICON: f32 = 20.0;
@@ -29,7 +28,6 @@ pub fn draw_top_bar(
     selected_id: &Option<String>,
     left_panel_visible: bool,
     right_panel_visible: bool,
-    choice_mode: u8,
     use_system_window_frame: bool,
 ) -> TopBarAction {
     let t = theme::app(ui.ctx());
@@ -37,7 +35,7 @@ pub fn draw_top_bar(
         toggle_left_panel: false,
         add_new: false,
         toggle_right_panel: false,
-        toggled_current: false,
+        toggle_current_id: None,
     };
 
     let gray = t.nav_icon_inactive_tint;
@@ -128,8 +126,7 @@ pub fn draw_top_bar(
                             let on = node.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
                             ui.add_space(12.0);
                             if toggle_switch(ui, on).clicked() {
-                                toggle_item(&mut manifest.root, &id, choice_mode);
-                                action.toggled_current = true;
+                                action.toggle_current_id = Some(id);
                             }
                         }
                     }

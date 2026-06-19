@@ -13,7 +13,7 @@ use crate::panels::drawer::{
     side_drawer_geometry, ConfirmModalResult, DRAWER_BTN_H,
 };
 use crate::panels::editor::draw_readonly_hosts_viewer;
-use crate::panels::status_bar::{draw_status_bar, EditorStatus};
+use crate::panels::status_bar::{draw_status_bar, draw_panel_status_spacer, EditorStatus, pin_body_and_status_bar};
 use crate::panels::widgets::format_bytes;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{self, layout};
@@ -255,37 +255,27 @@ fn draw_history_viewer_panel(ui: &mut Ui, width: f32, height: f32, state: &mut H
         .corner_radius(HISTORY_PANEL_RADIUS)
         .fill(t.editor_bg)
         .show(ui, |ui| {
-            ui.set_width(width);
-            ui.set_height(height);
-            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+            ui.set_min_size(Vec2::new(width, height));
+            ui.set_max_size(Vec2::new(width, height));
 
-            let origin = ui.cursor().min;
-            let editor_h = (height - layout::STATUS_BAR_HEIGHT).max(0.0);
-            let editor_rect =
-                egui::Rect::from_min_size(origin, Vec2::new(width, editor_h));
-            let status_rect = egui::Rect::from_min_size(
-                egui::pos2(origin.x, origin.y + editor_h),
-                Vec2::new(width, layout::STATUS_BAR_HEIGHT),
+            let status = viewer_status(&state.viewer_text);
+            pin_body_and_status_bar(
+                ui,
+                |ui| {
+                    if state.items.is_empty() {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(
+                                RichText::new("暂无记录")
+                                    .size(16.0)
+                                    .color(t.weak_text),
+                            );
+                        });
+                    } else {
+                        draw_readonly_hosts_viewer(ui, &mut state.viewer_text);
+                    }
+                },
+                |ui| draw_status_bar(ui, &status),
             );
-
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(editor_rect), |ui| {
-                if state.items.is_empty() {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(
-                            RichText::new("暂无记录")
-                                .size(16.0)
-                                .color(t.weak_text),
-                        );
-                    });
-                } else {
-                    draw_readonly_hosts_viewer(ui, &mut state.viewer_text);
-                }
-            });
-
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(status_rect), |ui| {
-                let status = viewer_status(&state.viewer_text);
-                draw_status_bar(ui, &status);
-            });
         });
 }
 
@@ -306,49 +296,51 @@ fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut His
     egui::Frame::new()
         .stroke(Stroke::new(1.0, t.separator))
         .corner_radius(HISTORY_PANEL_RADIUS)
+        .fill(t.editor_bg)
         .show(ui, |ui| {
-            ui.set_width(width);
-            ui.set_height(height);
-            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-            let pad = HISTORY_LIST_INNER_PAD;
-            let inner_w = (width - pad * 2.0).max(0.0);
-            let inner_h = (height - pad * 2.0).max(0.0);
-            let inner_origin = ui.cursor().min + Vec2::splat(pad);
-            let inner_rect =
-                egui::Rect::from_min_size(inner_origin, Vec2::new(inner_w, inner_h));
+            ui.set_min_size(Vec2::new(width, height));
+            ui.set_max_size(Vec2::new(width, height));
 
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
-                if state.items.is_empty() {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(RichText::new("暂无记录").color(t.weak_text));
-                    });
-                    return;
-                }
+            pin_body_and_status_bar(
+                ui,
+                |ui| {
+                    let pad = HISTORY_LIST_INNER_PAD;
+                    let inner_rect = ui.max_rect().shrink2(Vec2::splat(pad));
 
-                ScrollArea::vertical()
-                    .id_salt("history_list")
-                    .auto_shrink([false; 2])
-                    .max_height(inner_h)
-                    .show(ui, |ui| {
-                        ui.set_width(inner_w);
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = 2.0;
-                            ui.set_width(inner_w);
-                            let items: Vec<_> = state.items.iter().rev().cloned().collect();
-                            for item in items {
-                                if draw_history_item(
-                                    ui,
-                                    inner_w,
-                                    &item,
-                                    state.selected_id.as_deref(),
-                                ) {
-                                    state.select(item.id);
-                                }
-                            }
-                            ui.add_space(4.0);
-                        });
+                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
+                        if state.items.is_empty() {
+                            ui.centered_and_justified(|ui| {
+                                ui.label(RichText::new("暂无记录").color(t.weak_text));
+                            });
+                            return;
+                        }
+
+                        ScrollArea::vertical()
+                            .id_salt("history_list")
+                            .auto_shrink([false; 2])
+                            .show(ui, |ui| {
+                                ui.set_width(inner_rect.width());
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 2.0;
+                                    ui.set_width(inner_rect.width());
+                                    let items: Vec<_> = state.items.iter().rev().cloned().collect();
+                                    for item in items {
+                                        if draw_history_item(
+                                            ui,
+                                            inner_rect.width(),
+                                            &item,
+                                            state.selected_id.as_deref(),
+                                        ) {
+                                            state.select(item.id);
+                                        }
+                                    }
+                                    ui.add_space(4.0);
+                                });
+                            });
                     });
-            });
+                },
+                draw_panel_status_spacer,
+            );
         });
 }
 

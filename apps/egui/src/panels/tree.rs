@@ -3,12 +3,12 @@
 use switch_hosts_core::manifest_edit::SYSTEM_NODE_ID;
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::manifest::Manifest;
-use switch_hosts_core::toggle::toggle_item;
-use eframe::egui::{self, Sense, Ui, Vec2};
+use eframe::egui::{self, Sense, Stroke, Ui, Vec2};
 use serde_json::{json, Value};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
+use crate::panels::menu::{self};
 use crate::panels::widgets::{ellipsize_text, toggle_switch_at};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{self, layout};
@@ -23,7 +23,7 @@ pub enum TreeEvent {
     #[default]
     None,
     SelectionChanged,
-    Toggled,
+    ToggleRequested(String),
     CollapsedChanged,
     EditRequested(String),
     AddRequested,
@@ -46,10 +46,10 @@ pub fn draw_hosts_tree(
         .show(ui, |ui| {
             let bg = ui.available_rect_before_wrap();
             let bg_resp = ui.interact(bg, ui.id().with("tree_bg"), Sense::click());
-            bg_resp.context_menu(|ui| {
-                if menu_item(ui, "添加方案").clicked() {
+            menu::open_context_menu(ui, &bg_resp);
+            menu::show_context_menu_if_open(ui, &bg_resp, |m| {
+                if m.item("添加方案") {
                     event = TreeEvent::AddRequested;
-                    ui.close_menu();
                 }
             });
 
@@ -77,8 +77,7 @@ pub fn draw_hosts_tree(
         });
 
     if let Some(id) = pending_toggle_id {
-        toggle_item(&mut manifest.root, &id, config.choice_mode);
-        event = TreeEvent::Toggled;
+        event = TreeEvent::ToggleRequested(id);
     }
 
     event
@@ -332,8 +331,18 @@ fn render_row(
     }
 
     if !is_system {
-        response.context_menu(|ui| {
-            hosts_item_context_menu(ui, &id, is_remote, selected_id, event);
+        menu::open_context_menu(ui, &response);
+        menu::show_context_menu_if_open(ui, &response, |m| {
+            if m.item("编辑") {
+                *event = TreeEvent::EditRequested(id.clone());
+            }
+            if m.item_if(is_remote, "刷新") {
+                *event = TreeEvent::RefreshRequested(id.clone());
+            }
+            m.divider();
+            if m.item("移至回收站") {
+                *event = TreeEvent::MoveToTrashRequested(vec![id.clone()]);
+            }
         });
     }
 
@@ -343,34 +352,18 @@ fn render_row(
     }
 }
 
-fn hosts_item_context_menu(
-    ui: &mut Ui,
-    id: &str,
-    is_remote: bool,
-    _selected_id: &Option<String>,
-    event: &mut TreeEvent,
-) {
-    if menu_item(ui, "编辑").clicked() {
-        *event = TreeEvent::EditRequested(id.to_string());
-        ui.close_menu();
+/// 列表区装饰边框（左/上/下，纯装饰；右侧由 SidePanel 分隔线绘制）。
+pub fn paint_list_panel_border(ui: &Ui) {
+    let t = theme::app(ui.ctx());
+    let rect = ui.max_rect();
+    if !ui.is_rect_visible(rect) {
+        return;
     }
-    if is_remote && menu_item(ui, "刷新").clicked() {
-        *event = TreeEvent::RefreshRequested(id.to_string());
-        ui.close_menu();
-    }
-    ui.separator();
-    if menu_item(ui, "移至回收站").clicked() {
-        *event = TreeEvent::MoveToTrashRequested(vec![id.to_string()]);
-        ui.close_menu();
-    }
-}
-
-fn menu_item(ui: &mut Ui, label: &str) -> egui::Response {
-    ui.add(
-        egui::Button::new(label)
-            .frame(false)
-            .fill(egui::Color32::TRANSPARENT),
-    )
+    let stroke = Stroke::new(1.0, t.separator);
+    let p = ui.painter();
+    p.vline(rect.left() + 0.5, rect.y_range(), stroke);
+    p.hline(rect.x_range(), rect.top() + 0.5, stroke);
+    p.hline(rect.x_range(), rect.bottom() - 0.5, stroke);
 }
 
 /// 绘制方案列表面板。
