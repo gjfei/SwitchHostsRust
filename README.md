@@ -2,6 +2,10 @@
 
 [SwitchHosts](https://github.com/oldj/SwitchHosts) v5 功能的 Rust 重写实现。
 
+> **非官方项目（Unofficial）**  
+> 本项目由社区独立开发，与 [SwitchHosts](https://github.com/oldj/SwitchHosts) 及其作者 **无隶属、无授权、无背书关系**。  
+> 「SwitchHosts」名称仅用于说明功能来源；SwitchHostsRust 是本项目的产品名，不代表官方版本。
+
 - **数据目录**：`~/.SwitchHostsRust`（Windows：`%USERPROFILE%\.SwitchHostsRust`）
 - **开发 hosts 写入目标**：`~/.SwitchHostsRust/internal/dev/test.hosts`（默认；使用 `--system` 写入真实 `/etc/hosts`）
 
@@ -66,6 +70,14 @@ open target/release/bundle/osx/SwitchHostsRust.app
 | `cli` | 命令行工具 |
 | `apps/egui` | 桌面 GUI |
 
-## 许可证
+## 许可证与致谢
 
-Apache-2.0
+本项目源码以 [Apache License 2.0](LICENSE) 发布。第三方组件与资源署名见 [NOTICE](NOTICE)。
+
+| 组件 | 许可 | 说明 |
+|------|------|------|
+| 本项目源码 | Apache-2.0 | 见 [LICENSE](LICENSE) |
+| [SwitchHosts](https://github.com/oldj/SwitchHosts) | Apache-2.0 | 功能参考；`apps/egui/icons/` 应用图标来自原版 |
+| [Tabler Icons](https://tabler.io/icons) | MIT | `apps/egui/assets/icons/` UI 图标（v3.42.0） |
+
+与原版 SwitchHosts 的数据目录（`~/.SwitchHosts`）相互独立；导入/导出格式在 v5 备份 JSON 上尽量兼容，但不保证与官方客户端完全一致。
