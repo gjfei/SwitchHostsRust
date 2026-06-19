@@ -7,6 +7,7 @@ use eframe::egui::{self, FontData, FontDefinitions, FontFamily, FontId};
 
 pub const CJK_FONT_KEY: &str = "switch_hosts_cjk";
 pub const CJK_FONT_FAMILY: &str = "switch_hosts_cjk";
+const CJK_Y_OFFSET_FACTOR: f32 = 0.15;
 
 /// 在 egui 默认字体后追加 CJK 回退字体（拉丁文仍用内置字体）。
 pub fn setup_cjk_fonts(ctx: &egui::Context) {
@@ -54,6 +55,7 @@ fn load_cjk_font_data() -> Option<FontData> {
         };
         let mut data = FontData::from_owned(bytes);
         data.index = cjk_font_index(&path);
+        data.tweak.y_offset_factor = CJK_Y_OFFSET_FACTOR;
         tracing::info!(
             "已加载 CJK 字体: {} (index {})",
             path.display(),

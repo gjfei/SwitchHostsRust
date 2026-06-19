@@ -87,6 +87,7 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
                                 true,
                                 &mut gutter_line,
                             );
+                            let mut no_selection = None;
                             draw_code_area(
                                 ui,
                                 &metrics,
@@ -96,6 +97,7 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
                                 body_h,
                                 editor_id,
                                 None,
+                                &mut no_selection,
                             );
                         });
                     });
@@ -108,6 +110,7 @@ pub fn draw_editor_panel(
     text: &mut String,
     manifest: &Manifest,
     selected_id: Option<&str>,
+    pending_selection: &mut Option<(usize, usize)>,
 ) {
     let node = selected_id.and_then(|id| find_node(&manifest.root, id));
     let read_only = is_editor_read_only(selected_id, node.as_ref());
@@ -173,6 +176,7 @@ pub fn draw_editor_panel(
                                 body_h,
                                 editor_id,
                                 gutter_line,
+                                pending_selection,
                             );
                         });
                     });
@@ -236,6 +240,7 @@ fn draw_code_area(
     body_height: f32,
     editor_id: Id,
     gutter_line: Option<usize>,
+    pending_selection: &mut Option<(usize, usize)>,
 ) {
     let viewport_rows =
         ((body_height - EDITOR_PAD_Y * 2.0) / metrics.row_height).floor() as usize;
@@ -270,6 +275,24 @@ fn draw_code_area(
         .as_ref()
         .map(cursor_char_range)
         .unwrap_or((0, 0));
+
+    if let Some((start, end)) = pending_selection.take() {
+        let end = end.min(text.len());
+        let start = start.min(end);
+        let mut state = output.state.clone();
+        state.cursor.set_char_range(Some(CCursorRange {
+            primary: CCursor {
+                index: end,
+                prefer_next_row: false,
+            },
+            secondary: CCursor {
+                index: start,
+                prefer_next_row: false,
+            },
+        }));
+        state.store(ui.ctx(), output.response.id);
+        output.response.request_focus();
+    }
 
     if let Some(line_idx) = gutter_line {
         let snapshot = text.clone();

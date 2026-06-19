@@ -15,7 +15,7 @@ pub mod widgets;
 pub use details::{draw_details, DetailsAction};
 pub use edit_hosts::{draw_edit_hosts_drawer, EditHostsMode, EditHostsResult, EditHostsState};
 pub use editor::draw_editor_panel;
-pub use find_replace::{draw_find_replace, FindReplaceState};
+pub use find_replace::{draw_find_replace_drawer, FindReplaceAction, FindReplaceState};
 pub use history::{draw_history_drawer, HistoryResult, HistoryState};
 pub use navigation::{draw_navigation, NavAction, NavView};
 pub use preferences::draw_preferences;

@@ -14,11 +14,11 @@ use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
 use crate::panels::{
-    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace, draw_history_drawer,
+    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace_drawer, draw_history_drawer,
     draw_hosts_sidebar,
     draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_clear_confirm,
     draw_trash_delete_confirm, draw_trash_panel, editor_status, DetailsAction, EditHostsResult,
-    EditHostsState, FindReplaceState, HistoryResult, HistoryState, NavView, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
+    EditHostsState, FindReplaceAction, FindReplaceState, HistoryResult, HistoryState, NavView, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
 use crate::remote_refresh::refresh_remote_node;
 use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
@@ -36,10 +36,10 @@ pub struct SwitchHostsApp {
     hosts_list_visible: bool,
     test_mode: bool,
     show_preferences: bool,
-    show_find_replace: bool,
     edit_hosts: EditHostsState,
     history: HistoryState,
     find_replace: FindReplaceState,
+    editor_pending_selection: Option<(usize, usize)>,
     tray: Option<TrayController>,
     editor_dirty: bool,
     pending_trash_delete: Option<String>,
@@ -73,10 +73,10 @@ impl SwitchHostsApp {
             hosts_list_visible,
             test_mode,
             show_preferences: false,
-            show_find_replace: false,
             edit_hosts: EditHostsState::default(),
             history: HistoryState::default(),
             find_replace: FindReplaceState::default(),
+            editor_pending_selection: None,
             tray,
             editor_dirty: false,
             pending_trash_delete: None,
@@ -357,6 +357,12 @@ impl eframe::App for SwitchHostsApp {
         self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
 
+        if ctx.input(|i| {
+            i.key_pressed(egui::Key::F) && (i.modifiers.command || i.modifiers.ctrl)
+        }) {
+            self.find_replace.open_drawer();
+        }
+
         if self.config.tray_mini_window && self.tray.is_some() {
             if ctx.input(|i| i.viewport().close_requested()) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -427,15 +433,37 @@ impl eframe::App for SwitchHostsApp {
             }
         }
 
-        if draw_find_replace(
+        if let Some(action) = draw_find_replace_drawer(
             ctx,
-            &mut self.show_find_replace,
             &mut self.find_replace,
             &mut self.config,
             &self.manifest,
             &self.paths,
         ) {
-            self.reload_editor();
+            match action {
+                FindReplaceAction::None => {}
+                FindReplaceAction::ContentChanged(ids) => {
+                    if self
+                        .selected_id
+                        .as_ref()
+                        .is_some_and(|id| ids.iter().any(|changed| changed == id))
+                    {
+                        self.reload_editor();
+                    }
+                }
+                FindReplaceAction::JumpToMatch {
+                    entry_id,
+                    start_char,
+                    end_char,
+                } => {
+                    self.nav_view = NavView::Hosts;
+                    if self.selected_id.as_deref() != Some(entry_id.as_str()) {
+                        self.selected_id = Some(entry_id);
+                        self.reload_editor();
+                    }
+                    self.editor_pending_selection = Some((start_char, end_char));
+                }
+            }
         }
 
         let nav_action = draw_navigation(
@@ -451,7 +479,7 @@ impl eframe::App for SwitchHostsApp {
             self.show_preferences = true;
         }
         if nav_action.open_search {
-            self.show_find_replace = true;
+            self.find_replace.open_drawer();
         }
         if let Some(visible) = nav_action.left_panel_visible {
             self.hosts_list_visible = visible;
@@ -521,6 +549,7 @@ impl eframe::App for SwitchHostsApp {
                     &mut self.editor_text,
                     &self.manifest,
                     self.selected_id.as_deref(),
+                    &mut self.editor_pending_selection,
                 );
             });
 
