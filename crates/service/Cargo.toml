@@ -25,3 +25,7 @@ wiremock.workspace = true
 pretty_assertions.workspace = true
 
 
+
+[[test]]
+name = "client_integration"
+path = "tests/client_integration.rs"
