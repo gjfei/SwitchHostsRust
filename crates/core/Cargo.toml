@@ -26,3 +26,7 @@ tempfile.workspace = true
 pretty_assertions.workspace = true
 
 
+
+[[test]]
+name = "storage_integration"
+path = "tests/storage_integration.rs"
