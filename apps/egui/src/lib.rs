@@ -1,5 +1,11 @@
 pub mod app;
+pub mod fonts;
+pub mod icons;
 pub mod lifecycle;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod panels;
+pub mod theme;
 pub mod tray;
 pub mod tray_native;
+pub mod viewport;

@@ -2,6 +2,7 @@ pub mod find;
 pub mod hosts_apply;
 pub mod hosts_edit;
 pub mod import_export;
+pub mod manifest_edit;
 pub mod storage;
 pub mod toggle;
 

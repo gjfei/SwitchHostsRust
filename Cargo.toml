@@ -38,6 +38,7 @@ regex = "1"
 uuid = { version = "1", features = ["v4"] }
 eframe = { version = "0.31", default-features = true }
 egui = "0.31"
+egui_extras = { version = "0.31", features = ["svg", "image"] }
 rfd = "0.15"
 tray-icon = "0.19"
 auto-launch = "0.5"

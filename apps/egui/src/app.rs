@@ -1,20 +1,24 @@
 use switch_hosts_core::hosts_apply::elevation::SystemElevation;
 use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
+use switch_hosts_core::manifest_edit::{add_parent_for_selection, SYSTEM_NODE_ID};
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::entries;
-use switch_hosts_core::storage::manifest::Manifest;
+use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
-use switch_hosts_core::storage::trashcan::Trashcan;
+use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
 use eframe::egui;
+use raw_window_handle::HasWindowHandle;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
 use crate::panels::{
-    draw_activity_bar, draw_details, draw_editor, draw_find_replace, draw_preferences,
-    draw_trash, draw_tree, FindReplaceState,
+    draw_details, draw_edit_hosts_drawer, draw_editor_panel, draw_find_replace, draw_hosts_sidebar,
+    draw_navigation, draw_preferences, draw_status_bar, draw_top_bar, draw_trash_panel,
+    editor_status, EditHostsResult, EditHostsState, FindReplaceState, NavView, TreeEvent,
 };
+use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
 use crate::tray_native::{TrayAction, TrayController};
 
 pub struct SwitchHostsApp {
@@ -25,52 +29,88 @@ pub struct SwitchHostsApp {
     trashcan: Trashcan,
     selected_id: Option<String>,
     editor_text: String,
-    view_trash: bool,
+    nav_view: NavView,
+    hosts_list_visible: bool,
     test_mode: bool,
-    status_message: Option<String>,
     show_preferences: bool,
     show_find_replace: bool,
+    edit_hosts: EditHostsState,
     find_replace: FindReplaceState,
     tray: Option<TrayController>,
+    editor_dirty: bool,
+    #[cfg(target_os = "macos")]
+    traffic_lights_positioned: bool,
 }
 
 impl SwitchHostsApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
+        crate::fonts::setup_cjk_fonts(&cc.egui_ctx);
+        crate::icons::install_loaders(&cc.egui_ctx);
+        theme::setup_light_theme(&cc.egui_ctx);
+
         let config = AppConfig::load(&paths.config_file);
         let manifest = Manifest::load(&paths).unwrap_or_default();
         let trashcan = Trashcan::load(&paths.trashcan_file);
         let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
         let tray = TrayController::try_new(&manifest);
-        Self {
+        let hosts_list_visible = config.left_panel_show;
+
+        let mut app = Self {
             paths,
             target,
             config,
             manifest,
             trashcan,
-            selected_id: None,
+            selected_id: Some(SYSTEM_NODE_ID.to_string()),
             editor_text: String::new(),
-            view_trash: false,
+            nav_view: NavView::Hosts,
+            hosts_list_visible,
             test_mode,
-            status_message: None,
             show_preferences: false,
             show_find_replace: false,
+            edit_hosts: EditHostsState::default(),
             find_replace: FindReplaceState::default(),
             tray,
-        }
+            editor_dirty: false,
+            #[cfg(target_os = "macos")]
+            traffic_lights_positioned: false,
+        };
+        app.reload_editor();
+        app.sync_macos_traffic_lights(cc);
+        app
     }
 
-    fn reload_editor(&mut self) {
-        if let Some(id) = &self.selected_id {
-            self.editor_text = entries::read_entry(&self.paths.entries_dir, id).unwrap_or_default();
-        } else {
-            self.editor_text.clear();
+    #[cfg(target_os = "macos")]
+    fn sync_macos_traffic_lights(&mut self, handle: &impl HasWindowHandle) {
+        if self.config.use_system_window_frame || self.traffic_lights_positioned {
+            return;
         }
+        crate::macos::position_traffic_lights(handle);
+        self.traffic_lights_positioned = true;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn sync_macos_traffic_lights(&mut self, _handle: &impl HasWindowHandle) {}
+
+    fn reload_editor(&mut self) {
+        self.editor_text = if self.selected_id.as_deref() == Some(SYSTEM_NODE_ID) {
+            std::fs::read_to_string(self.target.path()).unwrap_or_default()
+        } else if let Some(id) = &self.selected_id {
+            entries::read_entry(&self.paths.entries_dir, id).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        self.editor_dirty = false;
     }
 
     fn save_editor(&mut self) {
-        if let Some(id) = &self.selected_id.clone() {
+        if let Some(id) = &self.selected_id {
+            if id == SYSTEM_NODE_ID {
+                return;
+            }
             let _ = entries::write_entry(&self.paths.entries_dir, id, &self.editor_text);
         }
+        self.editor_dirty = false;
     }
 
     fn apply_hosts(&mut self) {
@@ -81,6 +121,31 @@ impl SwitchHostsApp {
             elevation: &elevation,
         };
         let _ = pipeline.apply(&self.manifest, &self.target);
+    }
+
+    fn persist_manifest(&mut self) {
+        let _ = self.manifest.save(&self.paths);
+        if let Some(tray) = &mut self.tray {
+            tray.refresh(&self.manifest);
+        }
+    }
+
+    fn on_tree_event(&mut self, event: TreeEvent) {
+        match event {
+            TreeEvent::None => {}
+            TreeEvent::SelectionChanged => self.reload_editor(),
+            TreeEvent::EditRequested(id) => {
+                if let Some(node) = find_node(&self.manifest.root, &id) {
+                    self.edit_hosts.open_edit(&node);
+                }
+            }
+            TreeEvent::Toggled | TreeEvent::CollapsedChanged => {
+                self.persist_manifest();
+                if matches!(event, TreeEvent::Toggled) {
+                    self.apply_hosts();
+                }
+            }
+        }
     }
 
     fn show_main_window(&self, ctx: &egui::Context) {
@@ -94,12 +159,8 @@ impl SwitchHostsApp {
             TrayAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             TrayAction::ToggleScheme(id) => {
                 toggle_item(&mut self.manifest.root, &id, self.config.choice_mode);
-                let _ = self.manifest.save(&self.paths);
+                self.persist_manifest();
                 self.apply_hosts();
-                if let Some(tray) = &mut self.tray {
-                    tray.refresh(&self.manifest);
-                }
-                self.status_message = Some(format!("托盘已切换方案 {id}"));
             }
         }
     }
@@ -121,7 +182,12 @@ impl SwitchHostsApp {
 }
 
 impl eframe::App for SwitchHostsApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Rgba::from(WINDOW_BG).to_array()
+    }
+
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
 
         if self.config.tray_mini_window && self.tray.is_some() {
@@ -131,34 +197,70 @@ impl eframe::App for SwitchHostsApp {
             }
         }
 
-        if self.test_mode {
-            egui::TopBottomPanel::top("test_banner").show(ctx, |ui| {
-                ui.colored_label(
-                    egui::Color32::from_rgb(200, 120, 0),
-                    "测试模式 — 写入 dev test.hosts，非系统 /etc/hosts",
+        // 顶栏必须最先绘制（标题栏 overlay 区域），再绘制其下方的测试横幅。
+        egui::TopBottomPanel::top("top_bar")
+            .exact_height(TOP_BAR_HEIGHT)
+            .show_separator_line(false)
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::TOP_BAR_BG)
+                    .inner_margin(0.0),
+            )
+            .show(ctx, |ui| {
+                let action = draw_top_bar(
+                    ui,
+                    &mut self.manifest,
+                    &self.selected_id,
+                    self.hosts_list_visible,
+                    self.config.right_panel_show,
+                    self.config.choice_mode,
+                    self.config.use_system_window_frame,
                 );
+                if action.toggle_left_panel {
+                    self.hosts_list_visible = !self.hosts_list_visible;
+                }
+                if action.add_new {
+                    let parent_id = add_parent_for_selection(
+                        &self.manifest.root,
+                        self.selected_id.as_deref(),
+                    );
+                    self.edit_hosts.open_add(parent_id);
+                }
+                if action.toggle_right_panel {
+                    self.config.right_panel_show = !self.config.right_panel_show;
+                }
+                if action.toggled_current {
+                    self.persist_manifest();
+                    self.apply_hosts();
+                }
             });
+
+        if self.test_mode {
+            egui::TopBottomPanel::top("test_banner")
+                .exact_height(TEST_BANNER_HEIGHT)
+                .show_separator_line(false)
+                .frame(
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(255, 248, 230))
+                        .inner_margin(egui::Margin::symmetric(8, 0)),
+                )
+                .show(ctx, |ui| {
+                    ui.set_min_height(TEST_BANNER_HEIGHT);
+                    ui.set_max_height(TEST_BANNER_HEIGHT);
+                    ui.centered_and_justified(|ui| {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 100, 0),
+                            "测试模式 — 写入 dev test.hosts",
+                        );
+                    });
+                });
         }
-
-        draw_activity_bar(ctx, &mut self.view_trash);
-
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("偏好设置").clicked() {
-                    self.show_preferences = true;
-                }
-                if ui.button("查找 / 替换").clicked() {
-                    self.show_find_replace = true;
-                }
-            });
-        });
 
         if draw_preferences(ctx, &mut self.show_preferences, &mut self.config) {
             let _ = self.config.save(&self.paths.config_file);
             if let Ok(exe) = std::env::current_exe() {
                 let _ = crate::lifecycle::sync_launch_at_login(&self.config, &exe);
             }
-            self.status_message = Some("偏好设置已保存".into());
         }
 
         if draw_find_replace(
@@ -170,57 +272,111 @@ impl eframe::App for SwitchHostsApp {
             &self.paths,
         ) {
             self.reload_editor();
-            self.status_message = Some(format!(
-                "已替换 {} 处",
-                self.find_replace.last_count
-            ));
         }
 
-        egui::SidePanel::left("tree_panel")
-            .default_width(self.config.left_panel_width as f32)
+        let nav_action = draw_navigation(ctx, &mut self.nav_view, self.hosts_list_visible);
+        if nav_action.open_settings {
+            self.show_preferences = true;
+        }
+        if nav_action.open_search {
+            self.show_find_replace = true;
+        }
+        if let Some(visible) = nav_action.left_panel_visible {
+            self.hosts_list_visible = visible;
+        }
+
+        egui::TopBottomPanel::bottom("status_bar")
+            .exact_height(STATUS_BAR_HEIGHT)
+            .frame(
+                egui::Frame::new()
+                    .fill(SIDEBAR_BG)
+                    .inner_margin(0.0),
+            )
             .show(ctx, |ui| {
-                if self.view_trash {
-                    draw_trash(ui, &self.trashcan);
-                } else if draw_tree(ui, &mut self.manifest, &mut self.selected_id, &self.config) {
-                    self.reload_editor();
-                    let _ = self.manifest.save(&self.paths);
-                    if let Some(tray) = &mut self.tray {
-                        tray.refresh(&self.manifest);
-                    }
-                }
+                let status = editor_status(
+                    &self.manifest,
+                    self.selected_id.as_deref(),
+                    &self.editor_text,
+                );
+                draw_status_bar(ui, &status);
             });
+
+        if self.hosts_list_visible {
+            egui::SidePanel::left("hosts_sidebar")
+                .default_width(self.config.left_panel_width as f32)
+                .frame(egui::Frame::new().fill(SIDEBAR_BG))
+                .show(ctx, |ui| match self.nav_view {
+                    NavView::Hosts => {
+                        let event = draw_hosts_sidebar(
+                            ui,
+                            &mut self.manifest,
+                            &mut self.selected_id,
+                            &self.config,
+                        );
+                        self.on_tree_event(event);
+                    }
+                    NavView::Trash => draw_trash_panel(ui, &self.trashcan),
+                });
+        }
 
         if self.config.right_panel_show {
             egui::SidePanel::right("details_panel")
                 .default_width(self.config.right_panel_width as f32)
+                .frame(egui::Frame::new().fill(SIDEBAR_BG))
                 .show(ctx, |ui| {
                     draw_details(ui, &self.manifest, self.selected_id.as_deref());
                 });
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("应用 (Apply)").clicked() {
-                    self.save_editor();
-                    let _ = self.manifest.save(&self.paths);
-                    self.apply_hosts();
-                    self.status_message = Some(format!(
-                        "已写入: {}",
-                        self.target.path().display()
-                    ));
-                }
-                if ui.button("保存条目").clicked() {
-                    self.save_editor();
-                    if self.manifest.save(&self.paths).is_ok() {
-                        self.status_message = Some("条目与 manifest 已保存".into());
-                    }
-                }
+        let editor_text_before = self.editor_text.clone();
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(theme::EDITOR_BG).inner_margin(0.0))
+            .show(ctx, |ui| {
+                draw_editor_panel(
+                    ui,
+                    &mut self.editor_text,
+                    &self.manifest,
+                    self.selected_id.as_deref(),
+                );
             });
-            if let Some(msg) = &self.status_message {
-                ui.small(msg);
+
+        if self.editor_text != editor_text_before {
+            self.editor_dirty = true;
+        }
+        if self.editor_dirty {
+            self.save_editor();
+        }
+
+        match draw_edit_hosts_drawer(
+            ctx,
+            &mut self.edit_hosts,
+            &mut self.manifest,
+            &self.paths,
+        ) {
+            EditHostsResult::Saved { id } => {
+                self.selected_id = Some(id);
+                self.reload_editor();
+                self.persist_manifest();
             }
-            draw_editor(ui, &mut self.editor_text, self.selected_id.as_deref());
-        });
+            EditHostsResult::MovedToTrash { node } => {
+                let id = node
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.trashcan.push(TrashItem {
+                    id: id.clone(),
+                    node,
+                    deleted_at: None,
+                });
+                let _ = self.trashcan.save(&self.paths.trashcan_file);
+                self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+                self.reload_editor();
+                self.persist_manifest();
+            }
+            EditHostsResult::Cancelled => {}
+            EditHostsResult::None => {}
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use egui_app::app::SwitchHostsApp;
 use egui_app::lifecycle;
+use egui_app::viewport;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::paths::AppPaths;
@@ -27,9 +28,7 @@ fn main() -> Result<()> {
 
     let visible = lifecycle::initial_window_visible(&config);
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([960.0, 640.0])
-            .with_visible(visible),
+        viewport: viewport::root_viewport_builder(&config).with_visible(visible),
         ..Default::default()
     };
 

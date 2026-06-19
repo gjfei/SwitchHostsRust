@@ -22,11 +22,21 @@ switch-hosts-core.workspace = true
 service.workspace = true
 eframe.workspace = true
 egui.workspace = true
+egui_extras.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde_json.workspace = true
 tray-icon.workspace = true
 auto-launch.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-handle = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSWindow",
+    "NSView",
+    "NSButton",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true
