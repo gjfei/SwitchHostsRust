@@ -4,3 +4,6 @@ pub mod paths;
 pub mod manifest;
 pub mod state;
 pub mod tree_format;
+pub mod entries;
+pub mod config;
+pub mod trashcan;
