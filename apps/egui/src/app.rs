@@ -3,38 +3,43 @@ use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::entries;
-use switch_hosts_core::storage::manifest::{find_node, Manifest};
+use switch_hosts_core::storage::manifest::Manifest;
 use switch_hosts_core::storage::paths::AppPaths;
-use switch_hosts_core::toggle::toggle_item;
+use switch_hosts_core::storage::trashcan::Trashcan;
 use eframe::egui;
 
-use crate::panels::{draw_activity_bar, draw_details, draw_editor, draw_tree};
+use crate::panels::{draw_activity_bar, draw_details, draw_editor, draw_trash, draw_tree};
 
 pub struct SwitchHostsApp {
     paths: AppPaths,
     target: HostsTarget,
     config: AppConfig,
     manifest: Manifest,
+    trashcan: Trashcan,
     selected_id: Option<String>,
     editor_text: String,
     view_trash: bool,
     test_mode: bool,
+    status_message: Option<String>,
 }
 
 impl SwitchHostsApp {
     pub fn new(_cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
         let config = AppConfig::load(&paths.config_file);
         let manifest = Manifest::load(&paths).unwrap_or_default();
+        let trashcan = Trashcan::load(&paths.trashcan_file);
         let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
         Self {
             paths,
             target,
             config,
             manifest,
+            trashcan,
             selected_id: None,
             editor_text: String::new(),
             view_trash: false,
             test_mode,
+            status_message: None,
         }
     }
 
@@ -79,8 +84,11 @@ impl eframe::App for SwitchHostsApp {
         egui::SidePanel::left("tree_panel")
             .default_width(self.config.left_panel_width as f32)
             .show(ctx, |ui| {
-                if draw_tree(ui, &mut self.manifest, &mut self.selected_id, &self.config) {
+                if self.view_trash {
+                    draw_trash(ui, &self.trashcan);
+                } else if draw_tree(ui, &mut self.manifest, &mut self.selected_id, &self.config) {
                     self.reload_editor();
+                    let _ = self.manifest.save(&self.paths);
                 }
             });
 
@@ -94,15 +102,25 @@ impl eframe::App for SwitchHostsApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Apply").clicked() {
-                    self.save_editor();
-                    self.apply_hosts();
-                }
-                if ui.button("Save entry").clicked() {
+                if ui.button("应用 (Apply)").clicked() {
                     self.save_editor();
                     let _ = self.manifest.save(&self.paths);
+                    self.apply_hosts();
+                    self.status_message = Some(format!(
+                        "已写入: {}",
+                        self.target.path().display()
+                    ));
+                }
+                if ui.button("保存条目").clicked() {
+                    self.save_editor();
+                    if self.manifest.save(&self.paths).is_ok() {
+                        self.status_message = Some("条目与 manifest 已保存".into());
+                    }
                 }
             });
+            if let Some(msg) = &self.status_message {
+                ui.small(msg);
+            }
             draw_editor(ui, &mut self.editor_text, self.selected_id.as_deref());
         });
     }
