@@ -9,10 +9,7 @@ use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::widgets::toggle_switch;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    TOP_BAR_CLUSTER_WIDTH, TOP_BAR_HEIGHT, TOP_BAR_ICON_HIT, TOP_BAR_ICON_HOVER,
-    TOP_BAR_ICON_RADIUS, TOP_BAR_MAC_PAD_LEFT, TOP_BAR_PAD_X,
-};
+use crate::theme::{self, layout};
 
 pub struct TopBarAction {
     pub toggle_left_panel: bool,
@@ -35,6 +32,7 @@ pub fn draw_top_bar(
     choice_mode: u8,
     use_system_window_frame: bool,
 ) -> TopBarAction {
+    let t = theme::app(ui.ctx());
     let mut action = TopBarAction {
         toggle_left_panel: false,
         add_new: false,
@@ -42,11 +40,11 @@ pub fn draw_top_bar(
         toggled_current: false,
     };
 
-    let gray = Color32::from_rgb(100, 100, 110);
+    let gray = t.nav_icon_inactive_tint;
     let bar_rect = ui.max_rect();
     ui.set_width(bar_rect.width());
-    ui.set_min_height(TOP_BAR_HEIGHT);
-    ui.set_max_height(TOP_BAR_HEIGHT);
+    ui.set_min_height(layout::TOP_BAR_HEIGHT);
+    ui.set_max_height(layout::TOP_BAR_HEIGHT);
     ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
 
     if !use_system_window_frame {
@@ -54,23 +52,23 @@ pub fn draw_top_bar(
     }
 
     let pad_left = if use_system_window_frame {
-        TOP_BAR_PAD_X
+        layout::TOP_BAR_PAD_X
     } else {
-        TOP_BAR_PAD_X + mac_titlebar_pad_left()
+        layout::TOP_BAR_PAD_X + mac_titlebar_pad_left()
     };
 
     let left_rect = egui::Rect::from_min_max(
         egui::pos2(bar_rect.left(), bar_rect.top()),
-        egui::pos2(bar_rect.left() + TOP_BAR_CLUSTER_WIDTH, bar_rect.bottom()),
+        egui::pos2(bar_rect.left() + layout::TOP_BAR_CLUSTER_WIDTH, bar_rect.bottom()),
     );
     let right_rect = egui::Rect::from_min_max(
-        egui::pos2(bar_rect.right() - TOP_BAR_CLUSTER_WIDTH, bar_rect.top()),
+        egui::pos2(bar_rect.right() - layout::TOP_BAR_CLUSTER_WIDTH, bar_rect.top()),
         egui::pos2(bar_rect.right(), bar_rect.bottom()),
     );
 
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
-        ui.set_min_height(TOP_BAR_HEIGHT);
-        ui.set_max_height(TOP_BAR_HEIGHT);
+        ui.set_min_height(layout::TOP_BAR_HEIGHT);
+        ui.set_max_height(layout::TOP_BAR_HEIGHT);
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add_space(pad_left);
             if icon_btn(
@@ -98,10 +96,10 @@ pub fn draw_top_bar(
     });
 
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
-        ui.set_min_height(TOP_BAR_HEIGHT);
-        ui.set_max_height(TOP_BAR_HEIGHT);
+        ui.set_min_height(layout::TOP_BAR_HEIGHT);
+        ui.set_max_height(layout::TOP_BAR_HEIGHT);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(TOP_BAR_PAD_X);
+            ui.add_space(layout::TOP_BAR_PAD_X);
 
             if show_window_controls(use_system_window_frame) {
                 draw_window_controls(ui, gray);
@@ -148,8 +146,8 @@ pub fn draw_top_bar(
 /// 对齐 `.title { max-width: calc(100vw - ($w + $p) * 2) }`
 fn title_area_rect(bar_rect: egui::Rect) -> egui::Rect {
     let max_w =
-        (bar_rect.width() - 2.0 * TOP_BAR_CLUSTER_WIDTH - 2.0 * TOP_BAR_PAD_X).max(0.0);
-    egui::Rect::from_center_size(bar_rect.center(), egui::vec2(max_w, TOP_BAR_HEIGHT))
+        (bar_rect.width() - 2.0 * layout::TOP_BAR_CLUSTER_WIDTH - 2.0 * layout::TOP_BAR_PAD_X).max(0.0);
+    egui::Rect::from_center_size(bar_rect.center(), egui::vec2(max_w, layout::TOP_BAR_HEIGHT))
 }
 
 fn paint_centered_title(
@@ -159,6 +157,7 @@ fn paint_centered_title(
     selected_id: &Option<String>,
     gray: Color32,
 ) {
+    let t = theme::app(ui.ctx());
     let (title, node_icon) = current_title(manifest, selected_id.as_deref());
     let node = selected_id
         .as_deref()
@@ -170,7 +169,7 @@ fn paint_centered_title(
         return;
     }
 
-    let text_color = Color32::from_rgb(30, 30, 35);
+    let text_color = t.text;
     let font_id = ui_font_id(TITLE_FONT_SIZE);
     let painter = ui.painter();
 
@@ -186,7 +185,7 @@ fn paint_centered_title(
             ui,
             "只读".to_string(),
             ui_font_id(READONLY_BADGE_FONT_SIZE),
-            Color32::from_rgb(120, 120, 130),
+            t.weak_text,
             ICON_ROW_LINE_HEIGHT,
         ))
     } else {
@@ -228,7 +227,7 @@ fn paint_centered_title(
         painter.rect_filled(
             badge_rect,
             4.0,
-            Color32::from_rgb(233, 233, 236),
+            t.separator,
         );
         painter.galley(
             egui::pos2(
@@ -236,14 +235,14 @@ fn paint_centered_title(
                 text_align::galley_top_y_at_center(&badge_galley, badge_rect.center().y),
             ),
             badge_galley,
-            Color32::from_rgb(120, 120, 130),
+            t.weak_text,
         );
     }
 }
 
 fn mac_titlebar_pad_left() -> f32 {
     if cfg!(target_os = "macos") {
-        TOP_BAR_MAC_PAD_LEFT
+        layout::TOP_BAR_MAC_PAD_LEFT
     } else {
         0.0
     }
@@ -300,24 +299,26 @@ fn draw_window_controls(ui: &mut Ui, gray: Color32) {
 }
 
 fn icon_btn(ui: &mut Ui, icon: Icon, tint: Color32) -> egui::Response {
+    let t = theme::app(ui.ctx());
     icons::subtle_icon_button(
         ui,
         icon,
         BAR_ICON,
         tint,
-        TOP_BAR_ICON_HOVER,
-        TOP_BAR_ICON_HIT,
-        TOP_BAR_ICON_RADIUS,
+        t.icon_hover_bg,
+        layout::TOP_BAR_ICON_HIT,
+        layout::TOP_BAR_ICON_RADIUS,
     )
 }
 
 fn subtle_text_btn(ui: &mut Ui, label: &str, size: f32, color: Color32) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let (rect, response) =
-        ui.allocate_exact_size(Vec2::splat(TOP_BAR_ICON_HIT), Sense::click());
+        ui.allocate_exact_size(Vec2::splat(layout::TOP_BAR_ICON_HIT), Sense::click());
     if ui.is_rect_visible(rect) {
         if response.hovered() {
             ui.painter()
-                .rect_filled(rect, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
+                .rect_filled(rect, layout::TOP_BAR_ICON_RADIUS, t.icon_hover_bg);
         }
         ui.painter().text(
             rect.center(),

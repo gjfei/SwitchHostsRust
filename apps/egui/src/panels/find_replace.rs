@@ -13,20 +13,16 @@ use eframe::egui::{self, Color32, CornerRadius, FontId, Id, Sense, Stroke, Ui, V
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::drawer::{
-    backdrop_dismiss_clicked, drawer_frame, drawer_text_button, draw_drawer_header,
-    paint_side_drawer_backdrop, side_drawer_geometry, DRAWER_SHADOW,
+    backdrop_dismiss_clicked, drawer_panel_frame, drawer_text_button, draw_drawer_header,
+    paint_side_drawer_backdrop, side_drawer_geometry,
 };
 use crate::panels::widgets::ellipsize_text;
 use crate::text_align;
-use crate::theme::{
-    ACCENT, DRAWER_FOOTER_HEIGHT, DRAWER_OFFSET, DRAWER_PAD, DRAWER_WIDTH, EDITOR_BG,
-    DRAWER_INPUT_BORDER, RIGHT_PANEL_RADIUS, SEPARATOR, TOP_BAR_ICON_HOVER, TREE_FONT_SIZE,
-    TREE_TEXT, TREE_TEXT_SELECTED,
-};
+use crate::theme::{self, layout};
 
 const DEBOUNCE_SECS: f64 = 0.5;
 const INPUT_ROW_H: f32 = 36.0;
-const INPUT_PAD_X: f32 = DRAWER_PAD;
+const INPUT_PAD_X: f32 = layout::DRAWER_PAD;
 const INPUT_PAD_RIGHT: f32 = 12.0;
 const CHECKBOX_ROW_H: f32 = 36.0;
 const RESULT_ROW_HEIGHT: f32 = 29.0;
@@ -38,9 +34,6 @@ const RESULT_COL_GAP: f32 = 4.0;
 const RESULT_SCROLLBAR_OFFSET: f32 = 12.0;
 const NAV_BTN: f32 = 36.0;
 const FIND_STATUS_LINE_HEIGHT: f32 = 12.0;
-const FIND_HIGHLIGHT_BG: Color32 = Color32::from_rgb(238, 238, 0);
-const FIND_WEAK_TEXT: Color32 = Color32::from_rgb(153, 153, 153);
-const FIND_ERROR: Color32 = Color32::from_rgb(250, 82, 82);
 
 #[derive(Debug, Default)]
 pub struct FindReplaceState {
@@ -87,8 +80,8 @@ impl FindReplaceState {
 
 fn find_drawer_width(ctx: &egui::Context) -> f32 {
     let screen = ctx.input(|i| i.screen_rect());
-    let inset = screen.shrink2(Vec2::splat(DRAWER_OFFSET));
-    inset.width().clamp(DRAWER_WIDTH, 720.0)
+    let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
+    inset.width().clamp(layout::DRAWER_WIDTH, 720.0)
 }
 
 pub fn draw_find_replace_drawer(
@@ -147,9 +140,8 @@ pub fn draw_find_replace_drawer(
             ui.set_min_size(geom.area_rect.size());
             ui.set_max_size(geom.area_rect.size());
 
-            drawer_frame()
+            drawer_panel_frame(ctx)
                 .outer_margin(geom.shadow_margin)
-                .shadow(DRAWER_SHADOW)
                 .show(ui, |ui| {
                     ui.set_width(geom.drawer_rect.width());
                     ui.set_height(geom.drawer_rect.height());
@@ -159,12 +151,12 @@ pub fn draw_find_replace_drawer(
                             state.close();
                         }
 
-                        let body_h = ui.available_height() - DRAWER_FOOTER_HEIGHT;
+                        let body_h = ui.available_height() - layout::DRAWER_FOOTER_HEIGHT;
                         let body_rect = egui::Rect::from_min_size(
                             ui.cursor().min,
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
-                        ui.painter().rect_filled(body_rect, 0.0, Color32::WHITE);
+                        ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
                         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             draw_find_body(
@@ -186,7 +178,7 @@ pub fn draw_find_replace_drawer(
 
                         let footer_rect = egui::Rect::from_min_size(
                             ui.cursor().min,
-                            Vec2::new(geom.drawer_rect.width(), DRAWER_FOOTER_HEIGHT),
+                            Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
                         );
                         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
                             draw_find_footer(
@@ -251,10 +243,11 @@ fn draw_find_body(
 
     draw_checkbox_row(ui, config, state, action_busy, ctx);
 
+    let t = theme::app(ui.ctx());
     let list_h = ui.available_height().max(80.0);
     let col_widths = result_column_widths(ui, config);
     egui::Frame::new()
-        .fill(EDITOR_BG)
+        .fill(t.editor_bg)
         .inner_margin(0.0)
         .show(ui, |ui| {
             ui.set_min_height(list_h);
@@ -284,13 +277,9 @@ fn draw_find_footer(
     config: &AppConfig,
     options: &FindSearchOptions,
 ) {
+    let t = theme::app(ui.ctx());
     let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, DRAWER_FOOTER_HEIGHT), Sense::hover());
-    ui.painter().hline(
-        rect.x_range(),
-        rect.top(),
-        Stroke::new(1.0, SEPARATOR),
-    );
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
 
     ui.allocate_new_ui(
         egui::UiBuilder::new()
@@ -400,6 +389,7 @@ fn draw_flushed_input(
     request_focus: bool,
     on_change: impl FnOnce(),
 ) {
+    let t = theme::app(ui.ctx());
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, INPUT_ROW_H), Sense::hover());
 
@@ -408,7 +398,7 @@ fn draw_flushed_input(
         egui::pos2(rect.right() - INPUT_PAD_RIGHT, rect.bottom()),
     );
     ui.painter()
-        .hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, SEPARATOR));
+        .hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, t.separator));
 
     let mut edit = egui::TextEdit::singleline(value)
         .id(id)
@@ -443,7 +433,7 @@ fn draw_checkbox_row(
         Vec2::new(ui.available_width(), CHECKBOX_ROW_H),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
-            ui.add_space(DRAWER_PAD);
+            ui.add_space(layout::DRAWER_PAD);
             let mut is_regexp = config.find_is_regexp;
             let mut ignore_case = config.find_is_ignore_case;
             ui.spacing_mut().item_spacing.x = 16.0;
@@ -490,11 +480,12 @@ fn result_column_widths(ui: &Ui, config: &AppConfig) -> [f32; 3] {
 }
 
 fn draw_result_header(ui: &mut Ui, widths: [f32; 3]) {
+    let t = theme::app(ui.ctx());
     let h = RESULT_ROW_HEIGHT;
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
     ui.painter()
-        .hline(rect.x_range(), rect.top(), Stroke::new(1.0, SEPARATOR));
+        .hline(rect.x_range(), rect.top(), Stroke::new(1.0, t.separator));
 
     let mut x = rect.left() + RESULT_ROW_INSET + RESULT_ROW_PAD_LEFT;
     for (label, col_w) in [("匹配", widths[0]), ("标题", widths[1]), ("行", widths[2])] {
@@ -502,8 +493,8 @@ fn draw_result_header(ui: &mut Ui, widths: [f32; 3]) {
             egui::pos2(x, rect.center().y),
             egui::Align2::LEFT_CENTER,
             label,
-            ui_font_id(TREE_FONT_SIZE),
-            FIND_WEAK_TEXT,
+            ui_font_id(layout::TREE_FONT_SIZE),
+            t.weak_text,
         );
         x += col_w + RESULT_COL_GAP;
     }
@@ -576,35 +567,36 @@ fn draw_result_row(
     selected: bool,
     busy: bool,
 ) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(outer_w, RESULT_ROW_HEIGHT), Sense::click());
 
     if ui.is_rect_visible(rect) {
-        let radius = CornerRadius::same(RIGHT_PANEL_RADIUS as u8);
+        let radius = t.corner_panel();
         if selected {
-            ui.painter().rect_filled(rect, radius, ACCENT);
+            ui.painter().rect_filled(rect, radius, t.accent);
         } else if response.hovered() && !busy {
-            ui.painter().rect_filled(rect, radius, TOP_BAR_ICON_HOVER);
+            ui.painter().rect_filled(rect, radius, t.icon_hover_bg);
         }
         if !selected {
             ui.painter().hline(
                 rect.x_range(),
                 rect.bottom(),
-                Stroke::new(1.0, SEPARATOR),
+                Stroke::new(1.0, t.separator),
             );
         }
 
         let text_color = if selected {
-            TREE_TEXT_SELECTED
+            t.text_selected
         } else if row.is_disabled || row.is_readonly {
-            FIND_WEAK_TEXT
+            t.weak_text
         } else {
-            TREE_TEXT
+            t.text
         };
         let line_color = if selected {
-            TREE_TEXT_SELECTED
+            t.text_selected
         } else {
-            FIND_WEAK_TEXT
+            t.weak_text
         };
 
         let mut x = rect.left() + RESULT_ROW_PAD_LEFT;
@@ -619,6 +611,7 @@ fn draw_result_row(
             row,
             selected,
             text_color,
+            &t,
         );
         x += widths[0] + RESULT_COL_GAP;
 
@@ -628,12 +621,12 @@ fn draw_result_row(
         };
         icons::paint_icon(ui, icon, egui::pos2(x + 8.0, cy), 16.0, text_color);
         let title =
-            ellipsize_text(ui, &row.item_title, ui_font_id(TREE_FONT_SIZE), widths[1] - 24.0);
+            ellipsize_text(ui, &row.item_title, ui_font_id(layout::TREE_FONT_SIZE), widths[1] - 24.0);
         ui.painter().text(
             egui::pos2(x + 20.0, cy),
             egui::Align2::LEFT_CENTER,
             title,
-            ui_font_id(TREE_FONT_SIZE),
+            ui_font_id(layout::TREE_FONT_SIZE),
             text_color,
         );
         x += widths[1] + RESULT_COL_GAP;
@@ -642,7 +635,7 @@ fn draw_result_row(
             egui::pos2(x, cy),
             egui::Align2::LEFT_CENTER,
             row.line.to_string(),
-            ui_font_id(TREE_FONT_SIZE),
+            ui_font_id(layout::TREE_FONT_SIZE),
             line_color,
         );
 
@@ -662,8 +655,9 @@ fn paint_match_cell(
     row: &FindMatchRow,
     selected: bool,
     text_color: Color32,
+    t: &theme::AppTheme,
 ) {
-    let mono = FontId::monospace(TREE_FONT_SIZE);
+    let mono = FontId::monospace(layout::TREE_FONT_SIZE);
     let painter = ui.painter();
     let mut x = rect.left();
     let cy = rect.center().y;
@@ -677,9 +671,9 @@ fn paint_match_cell(
             tag,
             ui_font_id(10.0),
             if selected {
-                TREE_TEXT_SELECTED
+                t.text_selected
             } else {
-                FIND_WEAK_TEXT
+                t.weak_text
             },
         );
         x += ui
@@ -699,7 +693,7 @@ fn paint_match_cell(
         }
         // 对齐 `.highlight { color: var(--swh-font-color) }`：选中行匹配词仍用深色字 + 黄底。
         let segment_color = if is_match && selected {
-            TREE_TEXT
+            t.text
         } else {
             text_color
         };
@@ -717,20 +711,20 @@ fn paint_match_cell(
                 .fonts(|f| f.layout_no_wrap(clipped, mono.clone(), segment_color));
             if is_match {
                 let r = egui::Rect::from_min_size(
-                    egui::pos2(x, cy - TREE_FONT_SIZE * 0.55),
-                    Vec2::new(cg.size().x, TREE_FONT_SIZE * 1.1),
+                    egui::pos2(x, cy - layout::TREE_FONT_SIZE * 0.55),
+                    Vec2::new(cg.size().x, layout::TREE_FONT_SIZE * 1.1),
                 );
-                painter.rect_filled(r, 0.0, FIND_HIGHLIGHT_BG);
+                painter.rect_filled(r, 0.0, t.find_highlight_bg);
             }
             painter.galley(egui::pos2(x, cy - cg.size().y * 0.5), cg, segment_color);
             break;
         }
         if is_match {
             let r = egui::Rect::from_min_size(
-                egui::pos2(x, cy - TREE_FONT_SIZE * 0.55),
-                Vec2::new(gw, TREE_FONT_SIZE * 1.1),
+                egui::pos2(x, cy - layout::TREE_FONT_SIZE * 0.55),
+                Vec2::new(gw, layout::TREE_FONT_SIZE * 1.1),
             );
-            painter.rect_filled(r, 0.0, FIND_HIGHLIGHT_BG);
+            painter.rect_filled(r, 0.0, t.find_highlight_bg);
         }
         painter.galley(
             egui::pos2(x, cy - galley.size().y * 0.5),
@@ -754,9 +748,10 @@ fn draw_status_bar(
     config: &AppConfig,
     options: &FindSearchOptions,
 ) {
+    let t = theme::app(ui.ctx());
     ui.set_width(ui.max_rect().width());
     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.add_space(DRAWER_PAD);
+        ui.add_space(layout::DRAWER_PAD);
 
         if busy && pending_search {
             ui.allocate_ui_with_layout(
@@ -771,13 +766,13 @@ fn draw_status_bar(
 
         let count = state.rows.len();
         let (status, color) = if let Some(err) = &state.error {
-            (err.clone(), FIND_ERROR)
+            (err.clone(), t.find_error)
         } else if pending_search {
-            ("搜索中…".to_string(), FIND_WEAK_TEXT)
+            ("搜索中…".to_string(), t.weak_text)
         } else if count == 1 {
-            ("1 项匹配".to_string(), FIND_WEAK_TEXT)
+            ("1 项匹配".to_string(), t.weak_text)
         } else {
-            (format!("{count} 项匹配"), FIND_WEAK_TEXT)
+            (format!("{count} 项匹配"), t.weak_text)
         };
         let status_galley = text_align::layout_vcentered_galley(
             ui,
@@ -798,7 +793,7 @@ fn draw_status_bar(
         );
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(DRAWER_PAD);
+            ui.add_space(layout::DRAWER_PAD);
             let action_disabled = busy || !results_current || state.is_replacing;
             let has_rows = !state.rows.is_empty();
             let cur = state.current_idx.unwrap_or(0);
@@ -813,9 +808,9 @@ fn draw_status_bar(
             if drawer_text_button(
                 ui,
                 "替换",
-                ACCENT,
+                t.accent,
                 Stroke::NONE,
-                Color32::WHITE,
+                t.text_selected,
                 can_replace_one && !action_disabled,
             )
             .clicked()
@@ -829,9 +824,9 @@ fn draw_status_bar(
             if drawer_text_button(
                 ui,
                 "替换所有",
-                Color32::WHITE,
-                Stroke::new(1.0, DRAWER_INPUT_BORDER),
-                TREE_TEXT,
+                t.editor_bg,
+                Stroke::new(1.0, t.input_border),
+                t.text,
                 can_replace_all && !action_disabled,
             )
             .clicked()
@@ -865,20 +860,21 @@ fn draw_status_bar(
 }
 
 fn nav_btn(ui: &mut Ui, icon: Icon, enabled: bool) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(NAV_BTN), Sense::click());
     if !enabled {
         response = ui.interact(rect, response.id, Sense::hover());
     }
     let stroke_color = if enabled {
-        DRAWER_INPUT_BORDER
+        t.input_border
     } else {
         Color32::from_rgb(230, 230, 235)
     };
     let icon_color = if enabled {
         if response.hovered() {
-            TREE_TEXT
+            t.text
         } else {
-            Color32::from_rgb(100, 100, 110)
+            t.nav_icon_inactive_tint
         }
     } else {
         Color32::from_rgb(180, 180, 190)
@@ -886,7 +882,7 @@ fn nav_btn(ui: &mut Ui, icon: Icon, enabled: bool) -> egui::Response {
     ui.painter().rect(
         rect,
         CornerRadius::same(4),
-        Color32::WHITE,
+        t.editor_bg,
         Stroke::new(1.0, stroke_color),
         egui::StrokeKind::Inside,
     );

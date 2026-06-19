@@ -3,11 +3,7 @@
 use eframe::egui::{self, Color32, FontId, Sense, Ui, Vec2};
 
 use crate::icons::{self, Icon};
-use crate::theme::{
-    ACCENT, NAV_BADGE_BG, NAV_BADGE_FONT_SIZE, NAV_BADGE_OFFSET, NAV_BADGE_SIZE, NAV_BADGE_TEXT,
-    NAV_ICON_ACTIVE_BG, NAV_ICON_GAP, NAV_ICON_HIT, NAV_ICON_HOVER_BG, NAV_ICON_INACTIVE_TINT,
-    NAV_ICON_PAD_BOTTOM, NAV_ICON_RADIUS, NAV_ICON_SIZE, WINDOW_BG,
-};
+use crate::theme::{self, layout};
 
 /// 当前主导航视图。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,11 +29,12 @@ pub fn draw_navigation(
     hosts_list_visible: bool,
     trash_count: usize,
 ) -> NavAction {
+    let t = theme::app(ctx);
     let mut action = NavAction::default();
 
     egui::SidePanel::left("nav_rail")
-        .exact_width(crate::theme::NAV_WIDTH)
-        .frame(egui::Frame::new().fill(WINDOW_BG))
+        .exact_width(layout::NAV_WIDTH)
+        .frame(egui::Frame::new().fill(t.window_bg))
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.add_space(8.0);
@@ -45,7 +42,7 @@ pub fn draw_navigation(
                     action.left_panel_visible =
                         panel_nav_click(NavView::Hosts, view, hosts_list_visible);
                 }
-                ui.add_space(NAV_ICON_GAP);
+                ui.add_space(layout::NAV_ICON_GAP);
                 if nav_trash_icon(ui, *view == NavView::Trash, trash_count).clicked() {
                     action.left_panel_visible =
                         panel_nav_click(NavView::Trash, view, hosts_list_visible);
@@ -55,15 +52,15 @@ pub fn draw_navigation(
                     if nav_icon(ui, Icon::Settings, false).clicked() {
                         action.open_settings = true;
                     }
-                    ui.add_space(NAV_ICON_GAP);
+                    ui.add_space(layout::NAV_ICON_GAP);
                     if nav_icon(ui, Icon::History, false).clicked() {
                         action.open_history = true;
                     }
-                    ui.add_space(NAV_ICON_GAP);
+                    ui.add_space(layout::NAV_ICON_GAP);
                     if nav_icon(ui, Icon::Search, false).clicked() {
                         action.open_search = true;
                     }
-                    ui.add_space(NAV_ICON_PAD_BOTTOM);
+                    ui.add_space(layout::NAV_ICON_PAD_BOTTOM);
                 });
             });
         });
@@ -98,49 +95,51 @@ fn nav_trash_icon(ui: &mut Ui, active: bool, count: usize) -> egui::Response {
 
 /// Mantine `Indicator` on trash ActionIcon（count 为 0 时不显示）。
 fn paint_trash_count_badge(ui: &Ui, icon_rect: egui::Rect, count: usize) {
+    let t = theme::app(ui.ctx());
     let label = count.to_string();
-    let font_id = FontId::proportional(NAV_BADGE_FONT_SIZE);
+    let font_id = FontId::proportional(layout::NAV_BADGE_FONT_SIZE);
     let galley = ui
         .painter()
-        .layout_no_wrap(label, font_id, NAV_BADGE_TEXT);
+        .layout_no_wrap(label, font_id, t.nav_badge_text);
     let pad_x = 4.0;
     let badge_w = galley.size().x.max(6.0) + pad_x * 2.0;
-    let badge_h = NAV_BADGE_SIZE;
-    let anchor = icon_rect.right_top() + Vec2::new(NAV_BADGE_OFFSET, -NAV_BADGE_OFFSET);
+    let badge_h = layout::NAV_BADGE_SIZE;
+    let anchor = icon_rect.right_top() + Vec2::new(layout::NAV_BADGE_OFFSET, -layout::NAV_BADGE_OFFSET);
     let badge_rect = egui::Rect::from_min_size(
         egui::pos2(anchor.x - badge_w, anchor.y),
         Vec2::new(badge_w, badge_h),
     );
     let radius = badge_h * 0.5;
-    ui.painter().rect_filled(badge_rect, radius, NAV_BADGE_BG);
+    ui.painter().rect_filled(badge_rect, radius, t.nav_badge_bg);
     ui.painter().galley(
         badge_rect.center() - galley.size() * 0.5,
         galley,
-        NAV_BADGE_TEXT,
+        t.nav_badge_text,
     );
 }
 
 /// Mantine ActionIcon：`light`（选中）/ `subtle`（默认 + hover 灰底）。
 fn nav_icon(ui: &mut Ui, icon: Icon, active: bool) -> egui::Response {
-    let hit = Vec2::splat(NAV_ICON_HIT);
+    let t = theme::app(ui.ctx());
+    let hit = Vec2::splat(layout::NAV_ICON_HIT);
     let (rect, response) = ui.allocate_exact_size(hit, Sense::click());
     if ui.is_rect_visible(rect) {
         let bg = if active {
-            NAV_ICON_ACTIVE_BG
+            t.nav_icon_active_bg
         } else if response.hovered() {
-            NAV_ICON_HOVER_BG
+            t.nav_icon_hover_bg
         } else {
             Color32::TRANSPARENT
         };
         if bg != Color32::TRANSPARENT {
-            ui.painter().rect_filled(rect, NAV_ICON_RADIUS, bg);
+            ui.painter().rect_filled(rect, layout::NAV_ICON_RADIUS, bg);
         }
         let tint = if active {
-            ACCENT
+            t.accent
         } else {
-            NAV_ICON_INACTIVE_TINT
+            t.nav_icon_inactive_tint
         };
-        icons::paint_icon(ui, icon, rect.center(), NAV_ICON_SIZE, tint);
+        icons::paint_icon(ui, icon, rect.center(), layout::NAV_ICON_SIZE, tint);
     }
     response
 }

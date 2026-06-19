@@ -5,7 +5,7 @@ use eframe::egui::{self, Color32, Sense, Ui, Vec2};
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{DRAWER_INPUT_RADIUS, DRAWER_SEGMENTED_BG, DRAWER_WEAK_TEXT, TREE_TEXT};
+use crate::theme::{self, layout};
 
 /// 对齐 Mantine `SegmentedControl` size md（含 root padding）。
 pub const HEIGHT: f32 = 36.0;
@@ -47,10 +47,11 @@ pub fn segmented_control<T: Copy + PartialEq>(
         .iter()
         .position(|opt| *opt == *selected)
         .unwrap_or(0);
+    let t = theme::app(ui.ctx());
     let label_tint = if config.enabled {
-        Color32::from_rgb(60, 60, 70)
+        t.text
     } else {
-        Color32::from_rgb(180, 180, 185)
+        t.weak_text
     };
     let widths: Vec<f32> = options
         .iter()
@@ -83,11 +84,12 @@ pub fn segmented_text_values<'a>(
         .iter()
         .map(|label| measure_text_segment_width(ui, label))
         .collect();
+    let t = theme::app(ui.ctx());
     let clicked = segmented_bar(ui, id, &widths, selected_idx, config, |ui, i, active, seg_rect| {
         let color = if active {
-            TREE_TEXT
+            t.text
         } else {
-            DRAWER_WEAK_TEXT
+            t.weak_text
         };
         paint_segment_text(ui, seg_rect, labels[i], color);
     })?;
@@ -128,6 +130,7 @@ fn segmented_bar(
     config: SegmentedConfig,
     mut paint_segment: impl FnMut(&Ui, usize, bool, egui::Rect),
 ) -> Option<usize> {
+    let t = theme::app(ui.ctx());
     if widths.is_empty() {
         return None;
     }
@@ -137,8 +140,8 @@ fn segmented_bar(
 
     ui.push_id(id, |ui| {
         egui::Frame::new()
-            .fill(DRAWER_SEGMENTED_BG)
-            .corner_radius(DRAWER_INPUT_RADIUS)
+            .fill(t.segmented_bg)
+            .corner_radius(t.corner_input())
             .inner_margin(INNER)
             .show(ui, |ui| {
                 let (row_rect, _) =
@@ -157,11 +160,11 @@ fn segmented_bar(
                         if active {
                             ui.painter().rect_filled(
                                 seg_rect.translate(egui::vec2(0.0, 1.0)),
-                                DRAWER_INPUT_RADIUS,
-                                Color32::from_black_alpha(12),
+                                t.corner_input(),
+                                Color32::from_black_alpha(if t.dark { 40 } else { 12 }),
                             );
                             ui.painter()
-                                .rect_filled(seg_rect, DRAWER_INPUT_RADIUS, Color32::WHITE);
+                                .rect_filled(seg_rect, t.corner_input(), t.editor_bg);
                         }
 
                         paint_segment(ui, i, active, seg_rect);
@@ -230,10 +233,11 @@ pub fn paint_segment_icon_text(ui: &Ui, seg_rect: egui::Rect, icon: Icon, text: 
 
 /// 偏好设置等场景：居中绘制 14px 文本（弱/强色由 active 决定）。
 pub fn paint_segment_caption(ui: &Ui, seg_rect: egui::Rect, text: &str, active: bool) {
+    let t = theme::app(ui.ctx());
     let color = if active {
-        TREE_TEXT
+        t.text
     } else {
-        DRAWER_WEAK_TEXT
+        t.weak_text
     };
     let galley = text_align::layout_vcentered_galley(
         ui,

@@ -9,9 +9,7 @@ use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::NavView;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    ACCENT, RIGHT_PANEL_RADIUS, SEPARATOR, SIDEBAR_BG, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS,
-};
+use crate::theme;
 
 const HEADER_PAD: f32 = 12.0;
 const HEADER_H: f32 = 40.0;
@@ -71,7 +69,8 @@ pub fn draw_details(
                 draw_node_panel(ui, &node, manifest, editor_text, false, &mut action);
             } else {
                 ui.add_space(SECTION_PAD);
-                ui.label(RichText::new("未找到节点").size(VALUE_FONT).color(weak_text()));
+                let t = theme::app(ui.ctx());
+                ui.label(RichText::new("未找到节点").size(VALUE_FONT).color(t.weak_text));
             }
         });
 
@@ -79,18 +78,20 @@ pub fn draw_details(
 }
 
 fn paint_panel_border(ui: &Ui) {
+    let t = theme::app(ui.ctx());
     let rect = ui.max_rect();
-    let stroke = Stroke::new(1.0, SEPARATOR);
+    let stroke = Stroke::new(1.0, t.separator);
     let p = ui.painter();
+    let r = t.corner_panel();
     p.rect_filled(
         rect,
         CornerRadius {
             nw: 0,
-            ne: RIGHT_PANEL_RADIUS as u8,
-            se: RIGHT_PANEL_RADIUS as u8,
+            ne: r.nw,
+            se: r.se,
             sw: 0,
         },
-        SIDEBAR_BG,
+        t.sidebar_bg,
     );
     p.line_segment(
         [egui::pos2(rect.left(), rect.top()), egui::pos2(rect.right(), rect.top())],
@@ -200,12 +201,16 @@ fn draw_node_panel(
             ui.label(
                 RichText::new(format!("内容 ({})", include.len()))
                     .size(LABEL_FONT)
-                    .color(weak_text())
+                    .color(theme::app(ui.ctx()).weak_text)
                     .strong(),
             );
             ui.add_space(8.0);
             if include.is_empty() {
-                ui.label(RichText::new("—").size(VALUE_FONT).color(weak_text()));
+                ui.label(
+                    RichText::new("—")
+                        .size(VALUE_FONT)
+                        .color(theme::app(ui.ctx()).weak_text),
+                );
             } else {
                 for inc_id in include {
                     draw_include_row(ui, manifest, inc_id);
@@ -230,9 +235,10 @@ fn draw_header(
     show_edit: bool,
     action: &mut DetailsAction,
 ) {
+    let t = theme::app(ui.ctx());
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, HEADER_H), Sense::hover());
-    ui.painter().hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, SEPARATOR));
+    ui.painter().hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, t.separator));
 
     let cy = rect.center().y;
     icons::paint_icon(
@@ -253,7 +259,7 @@ fn draw_header(
         ui,
         title.to_owned(),
         ui_font_id(TITLE_FONT),
-        Color32::from_rgb(30, 30, 35),
+        t.text,
         ICON_ROW_LINE_HEIGHT,
     );
     let clip = egui::Rect::from_min_size(
@@ -266,7 +272,7 @@ fn draw_header(
         title_x,
         cy,
         galley,
-        Color32::from_rgb(30, 30, 35),
+        t.text,
     );
 
     if show_edit {
@@ -278,7 +284,7 @@ fn draw_header(
         if ui.is_rect_visible(btn) {
             if resp.hovered() {
                 ui.painter()
-                    .rect_filled(btn, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
+                    .rect_filled(btn, t.corner_icon(), t.icon_hover_bg);
             }
             text_align::paint_icon_text_row(
                 ui,
@@ -289,7 +295,7 @@ fn draw_header(
                 4.0,
                 "编辑",
                 ui_font_id(12.0),
-                ACCENT,
+                t.accent,
                 ICON_ROW_LINE_HEIGHT,
             );
         }
@@ -300,6 +306,7 @@ fn draw_header(
 }
 
 fn draw_include_row(ui: &mut Ui, manifest: &Manifest, id: &str) {
+    let t = theme::app(ui.ctx());
     let (icon, label, missing) = if let Some(node) = find_node(&manifest.root, id) {
         (
             icons::node_icon(&node, false),
@@ -321,16 +328,16 @@ fn draw_include_row(ui: &mut Ui, manifest: &Manifest, id: &str) {
         egui::pos2(left + 8.0, cy),
         16.0,
         if missing {
-            weak_text()
+            t.weak_text
         } else {
-            Color32::from_rgb(100, 100, 110)
+            t.nav_icon_inactive_tint
         },
     );
     let galley = text_align::layout_vcentered_galley(
         ui,
         label,
         ui_font_id(VALUE_FONT),
-        if missing { weak_text() } else { Color32::from_rgb(30, 30, 35) },
+        if missing { t.weak_text } else { t.text },
         ICON_ROW_LINE_HEIGHT,
     );
     text_align::paint_galley_row_centered(
@@ -338,12 +345,13 @@ fn draw_include_row(ui: &mut Ui, manifest: &Manifest, id: &str) {
         left + 16.0 + 6.0,
         cy,
         galley,
-        if missing { weak_text() } else { Color32::from_rgb(30, 30, 35) },
+        if missing { t.weak_text } else { t.text },
     );
     ui.add_space(VALUE_FONT + 4.0);
 }
 
 fn draw_trash_footer(ui: &mut Ui, action: &mut DetailsAction) {
+    let t = theme::app(ui.ctx());
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 52.0), Sense::hover());
     ui.painter().line_segment(
@@ -351,7 +359,7 @@ fn draw_trash_footer(ui: &mut Ui, action: &mut DetailsAction) {
             egui::pos2(rect.left() + SECTION_PAD, rect.top()),
             egui::pos2(rect.right() - SECTION_PAD, rect.top()),
         ],
-        Stroke::new(1.0, SEPARATOR),
+        Stroke::new(1.0, t.separator),
     );
 
     ui.allocate_new_ui(
@@ -377,53 +385,56 @@ fn section(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
 }
 
 fn info_row(ui: &mut Ui, label: &str, value: &str) {
+    let t = theme::app(ui.ctx());
     ui.label(
         RichText::new(label)
             .size(LABEL_FONT)
-            .color(weak_text()),
+            .color(t.weak_text),
     );
     ui.add_space(2.0);
     ui.label(
         RichText::new(value)
             .size(VALUE_FONT)
-            .color(Color32::from_rgb(30, 30, 35)),
+            .color(t.text),
     );
     ui.add_space(ROW_GAP);
 }
 
 fn info_row_mono(ui: &mut Ui, label: &str, value: &str) {
+    let t = theme::app(ui.ctx());
     ui.label(
         RichText::new(label)
             .size(LABEL_FONT)
-            .color(weak_text()),
+            .color(t.weak_text),
     );
     ui.add_space(2.0);
     ui.label(
         RichText::new(value)
             .font(FontId::monospace(MONO_FONT))
             .size(MONO_FONT)
-            .color(ACCENT),
+            .color(t.accent),
     );
     ui.add_space(ROW_GAP);
 }
 
 fn compact_btn(ui: &mut Ui, icon: Icon, label: &str) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let galley = ui.fonts(|f| {
         f.layout_no_wrap(
             label.to_owned(),
             ui_font_id(12.0),
-            Color32::from_rgb(30, 30, 35),
+            t.text,
         )
     });
     let w = 14.0 + 4.0 + galley.size().x + 16.0;
     let (rect, response) = ui.allocate_exact_size(Vec2::new(w, 28.0), Sense::click());
     if ui.is_rect_visible(rect) {
         let fill = if response.hovered() {
-            TOP_BAR_ICON_HOVER
+            t.icon_hover_bg
         } else {
-            Color32::from_rgb(241, 243, 245)
+            t.segmented_bg
         };
-        ui.painter().rect_filled(rect, TOP_BAR_ICON_RADIUS, fill);
+        ui.painter().rect_filled(rect, t.corner_icon(), fill);
         text_align::paint_icon_text_row(
             ui,
             rect.center().y,
@@ -433,7 +444,7 @@ fn compact_btn(ui: &mut Ui, icon: Icon, label: &str) -> egui::Response {
             4.0,
             label,
             ui_font_id(12.0),
-            Color32::from_rgb(30, 30, 35),
+            t.text,
             ICON_ROW_LINE_HEIGHT,
         );
     }
@@ -470,6 +481,3 @@ fn refresh_label(secs: u64) -> &'static str {
         .unwrap_or("从不")
 }
 
-fn weak_text() -> Color32 {
-    Color32::from_rgb(134, 142, 150)
-}

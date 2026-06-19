@@ -8,18 +8,15 @@ use eframe::egui::{self, Color32, CornerRadius, Id, RichText, ScrollArea, Sense,
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::drawer::{
-    backdrop_dismiss_clicked, drawer_frame, drawer_select, draw_confirm_modal,
+    backdrop_dismiss_clicked, drawer_panel_frame, drawer_select, draw_confirm_modal,
     draw_drawer_header, outline_button, outline_button_with_icon, paint_side_drawer_backdrop,
-    side_drawer_geometry, ConfirmModalResult, DRAWER_BTN_H, DRAWER_INPUT_TEXT, DRAWER_SHADOW,
+    side_drawer_geometry, ConfirmModalResult, DRAWER_BTN_H,
 };
 use crate::panels::editor::draw_readonly_hosts_viewer;
 use crate::panels::status_bar::{draw_status_bar, EditorStatus};
 use crate::panels::widgets::format_bytes;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    DRAWER_FOOTER_HEIGHT, DRAWER_OFFSET, DRAWER_PAD, DRAWER_WEAK_TEXT, DRAWER_WIDTH, SEPARATOR,
-    STATUS_BAR_HEIGHT, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS, TREE_HOVER,
-};
+use crate::theme::{self, layout};
 
 const HISTORY_LIST_WIDTH: f32 = 200.0;
 /// 对齐 `History.tsx` 面板 `borderRadius: 6`
@@ -31,6 +28,8 @@ const HISTORY_ITEM_PAD_Y: f32 = 8.0;
 const HISTORY_ITEM_GAP: f32 = 8.0;
 const HISTORY_ITEM_META: f32 = 9.0;
 const HISTORY_LIMIT_SELECT_W: f32 = 100.0;
+/// 对齐 `History.tsx` 列表 `ScrollArea` `padding: 4`（边框内边距，不计入外框高度）。
+const HISTORY_LIST_INNER_PAD: f32 = 4.0;
 
 #[derive(Debug, Default)]
 pub struct HistoryState {
@@ -89,8 +88,8 @@ impl HistoryState {
 
 fn history_drawer_width(ctx: &egui::Context) -> f32 {
     let screen = ctx.input(|i| i.screen_rect());
-    let inset = screen.shrink2(Vec2::splat(DRAWER_OFFSET));
-    inset.width().clamp(DRAWER_WIDTH, 720.0)
+    let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
+    inset.width().clamp(layout::DRAWER_WIDTH, 720.0)
 }
 
 pub fn draw_history_drawer(
@@ -130,9 +129,8 @@ pub fn draw_history_drawer(
             ui.set_min_size(geom.area_rect.size());
             ui.set_max_size(geom.area_rect.size());
 
-            drawer_frame()
+            drawer_panel_frame(ctx)
                 .outer_margin(geom.shadow_margin)
-                .shadow(DRAWER_SHADOW)
                 .show(ui, |ui| {
                     ui.set_width(geom.drawer_rect.width());
                     ui.set_height(geom.drawer_rect.height());
@@ -143,13 +141,13 @@ pub fn draw_history_drawer(
                             result = HistoryResult::Closed;
                         }
 
-                        let body_h = ui.available_height() - DRAWER_FOOTER_HEIGHT;
+                        let body_h = ui.available_height() - layout::DRAWER_FOOTER_HEIGHT;
                         let body_rect = egui::Rect::from_min_size(
                             ui.cursor().min,
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
                         ui.painter()
-                            .rect_filled(body_rect, 0.0, Color32::WHITE);
+                            .rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
                         ui.allocate_new_ui(
                             egui::UiBuilder::new().max_rect(body_rect),
                             |ui| {
@@ -223,46 +221,51 @@ pub fn draw_history_drawer(
     result
 }
 
+/// 对齐 `SideDrawer` footer `padding: md`：主体与 footer 之间留白。
+const BODY_BOTTOM_PAD: f32 = layout::DRAWER_PAD;
+
 /// 对齐 `History.tsx` → `HistoryList`：`Flex h="100%"` 左右同高面板。
 fn draw_history_body(ui: &mut Ui, drawer_w: f32, panel_h: f32, state: &mut HistoryState) {
-    let inner_w = drawer_w - DRAWER_PAD * 2.0;
+    let content_h = (panel_h - BODY_BOTTOM_PAD).max(0.0);
+    let inner_w = drawer_w - layout::DRAWER_PAD * 2.0;
     let viewer_w = (inner_w - HISTORY_LIST_WIDTH - HISTORY_PANEL_GAP).max(0.0);
 
     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-        ui.add_space(DRAWER_PAD);
-        ui.allocate_ui_with_layout(
-            Vec2::new(viewer_w, panel_h),
-            egui::Layout::top_down(egui::Align::LEFT),
-            |ui| draw_history_viewer_panel(ui, viewer_w, panel_h, state),
-        );
+        ui.add_space(layout::DRAWER_PAD);
+        let (viewer_rect, _) =
+            ui.allocate_exact_size(Vec2::new(viewer_w, content_h), Sense::hover());
+        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(viewer_rect), |ui| {
+            draw_history_viewer_panel(ui, viewer_w, content_h, state);
+        });
         ui.add_space(HISTORY_PANEL_GAP);
-        ui.allocate_ui_with_layout(
-            Vec2::new(HISTORY_LIST_WIDTH, panel_h),
-            egui::Layout::top_down(egui::Align::LEFT),
-            |ui| draw_history_list_panel(ui, HISTORY_LIST_WIDTH, panel_h, state),
-        );
-        ui.add_space(DRAWER_PAD);
+        let (list_rect, _) =
+            ui.allocate_exact_size(Vec2::new(HISTORY_LIST_WIDTH, content_h), Sense::hover());
+        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list_rect), |ui| {
+            draw_history_list_panel(ui, HISTORY_LIST_WIDTH, content_h, state);
+        });
+        ui.add_space(layout::DRAWER_PAD);
     });
 }
 
 /// 对齐 `HostsViewer`：边框内 editor + StatusBar。
 fn draw_history_viewer_panel(ui: &mut Ui, width: f32, height: f32, state: &mut HistoryState) {
+    let t = theme::app(ui.ctx());
     egui::Frame::new()
-        .stroke(Stroke::new(1.0, SEPARATOR))
+        .stroke(Stroke::new(1.0, t.separator))
         .corner_radius(HISTORY_PANEL_RADIUS)
-        .fill(Color32::WHITE)
+        .fill(t.editor_bg)
         .show(ui, |ui| {
             ui.set_width(width);
             ui.set_height(height);
             ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
 
             let origin = ui.cursor().min;
-            let editor_h = (height - STATUS_BAR_HEIGHT).max(0.0);
+            let editor_h = (height - layout::STATUS_BAR_HEIGHT).max(0.0);
             let editor_rect =
                 egui::Rect::from_min_size(origin, Vec2::new(width, editor_h));
             let status_rect = egui::Rect::from_min_size(
                 egui::pos2(origin.x, origin.y + editor_h),
-                Vec2::new(width, STATUS_BAR_HEIGHT),
+                Vec2::new(width, layout::STATUS_BAR_HEIGHT),
             );
 
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(editor_rect), |ui| {
@@ -271,7 +274,7 @@ fn draw_history_viewer_panel(ui: &mut Ui, width: f32, height: f32, state: &mut H
                         ui.label(
                             RichText::new("暂无记录")
                                 .size(16.0)
-                                .color(DRAWER_WEAK_TEXT),
+                                .color(t.weak_text),
                         );
                     });
                 } else {
@@ -299,51 +302,53 @@ fn viewer_status(text: &str) -> EditorStatus {
 }
 
 fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut HistoryState) {
+    let t = theme::app(ui.ctx());
     egui::Frame::new()
-        .stroke(Stroke::new(1.0, SEPARATOR))
+        .stroke(Stroke::new(1.0, t.separator))
         .corner_radius(HISTORY_PANEL_RADIUS)
-        .inner_margin(egui::Margin::same(4))
         .show(ui, |ui| {
             ui.set_width(width);
             ui.set_height(height);
-            let inner_w = (width - 8.0).max(0.0);
-            let inner_h = (height - 8.0).max(0.0);
+            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+            let pad = HISTORY_LIST_INNER_PAD;
+            let inner_w = (width - pad * 2.0).max(0.0);
+            let inner_h = (height - pad * 2.0).max(0.0);
+            let inner_origin = ui.cursor().min + Vec2::splat(pad);
+            let inner_rect =
+                egui::Rect::from_min_size(inner_origin, Vec2::new(inner_w, inner_h));
 
-            if state.items.is_empty() {
-                ui.allocate_ui_with_layout(
-                    Vec2::new(width, height),
-                    egui::Layout::top_down(egui::Align::Center),
-                    |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(RichText::new("暂无记录").color(DRAWER_WEAK_TEXT));
-                        });
-                    },
-                );
-                return;
-            }
-
-            ScrollArea::vertical()
-                .id_salt("history_list")
-                .auto_shrink([false; 2])
-                .max_height(inner_h)
-                .show(ui, |ui| {
-                    ui.set_width(inner_w);
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        ui.set_width(inner_w);
-                        let items: Vec<_> = state.items.iter().rev().cloned().collect();
-                        for item in items {
-                            if draw_history_item(
-                                ui,
-                                inner_w,
-                                &item,
-                                state.selected_id.as_deref(),
-                            ) {
-                                state.select(item.id);
-                            }
-                        }
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
+                if state.items.is_empty() {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(RichText::new("暂无记录").color(t.weak_text));
                     });
-                });
+                    return;
+                }
+
+                ScrollArea::vertical()
+                    .id_salt("history_list")
+                    .auto_shrink([false; 2])
+                    .max_height(inner_h)
+                    .show(ui, |ui| {
+                        ui.set_width(inner_w);
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 2.0;
+                            ui.set_width(inner_w);
+                            let items: Vec<_> = state.items.iter().rev().cloned().collect();
+                            for item in items {
+                                if draw_history_item(
+                                    ui,
+                                    inner_w,
+                                    &item,
+                                    state.selected_id.as_deref(),
+                                ) {
+                                    state.select(item.id);
+                                }
+                            }
+                            ui.add_space(4.0);
+                        });
+                    });
+            });
         });
 }
 
@@ -353,6 +358,7 @@ fn draw_history_item(
     item: &ApplyHistoryItem,
     selected_id: Option<&str>,
 ) -> bool {
+    let t = theme::app(ui.ctx());
     let selected = selected_id == Some(item.id.as_str());
     let line_count = item.content.lines().count().max(1);
     let meta = format!(
@@ -371,10 +377,10 @@ fn draw_history_item(
 
     if selected {
         ui.painter()
-            .rect_filled(rect, HISTORY_PANEL_RADIUS, TREE_HOVER);
+            .rect_filled(rect, HISTORY_PANEL_RADIUS, t.tree_hover);
     } else if response.hovered() {
         ui.painter()
-            .rect_filled(rect, HISTORY_PANEL_RADIUS, TOP_BAR_ICON_HOVER);
+            .rect_filled(rect, HISTORY_PANEL_RADIUS, t.icon_hover_bg);
     }
 
     let text_x = rect.left() + HISTORY_ITEM_PAD_X + 16.0 + HISTORY_ITEM_GAP;
@@ -393,7 +399,7 @@ fn draw_history_item(
         ui,
         time,
         ui_font_id(13.0),
-        DRAWER_INPUT_TEXT,
+        t.text,
         16.0,
     );
     text_align::paint_galley_row_centered(
@@ -401,14 +407,14 @@ fn draw_history_item(
         text_x,
         rect.top() + HISTORY_ITEM_PAD_Y + 8.0,
         time_galley,
-        DRAWER_INPUT_TEXT,
+        t.text,
     );
 
     let meta_galley = text_align::layout_vcentered_galley(
         ui,
         meta,
         ui_font_id(HISTORY_ITEM_META),
-        DRAWER_WEAK_TEXT,
+        t.weak_text,
         14.0,
     );
     text_align::paint_galley_row_centered(
@@ -416,7 +422,7 @@ fn draw_history_item(
         text_x,
         rect.top() + HISTORY_ITEM_PAD_Y + 24.0,
         meta_galley,
-        DRAWER_WEAK_TEXT,
+        t.weak_text,
     );
 
     response.clicked()
@@ -433,16 +439,19 @@ fn draw_footer(
     state: &mut HistoryState,
     config: &mut AppConfig,
 ) -> FooterAction {
+    let t = theme::app(ui.ctx());
     let mut action = FooterAction::None;
     let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, DRAWER_FOOTER_HEIGHT), Sense::hover());
-    let half = (rect.width() - DRAWER_PAD * 2.0) * 0.5;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
+
+    let row_top = rect.top() + (layout::DRAWER_FOOTER_HEIGHT - DRAWER_BTN_H) * 0.5;
+    let half = (rect.width() - layout::DRAWER_PAD * 2.0) * 0.5;
     let left = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + DRAWER_PAD, rect.top() + 16.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD, row_top),
         Vec2::new(half, DRAWER_BTN_H),
     );
     let right = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + DRAWER_PAD + half, rect.top() + 16.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD + half, row_top),
         Vec2::new(half, DRAWER_BTN_H),
     );
 
@@ -451,7 +460,7 @@ fn draw_footer(
             ui.label(
                 RichText::new("历史记录上限")
                     .size(14.0)
-                    .color(DRAWER_INPUT_TEXT),
+                    .color(t.text),
             );
             ui.add_space(8.0);
 
@@ -507,17 +516,18 @@ fn draw_footer(
 }
 
 fn draw_footer_help(ui: &mut Ui) {
+    let t = theme::app(ui.ctx());
     let help_rect = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover()).0;
     let help = ui.interact(help_rect, ui.id().with("history_help"), Sense::hover());
     if help.hovered() {
         ui.painter()
-            .rect_filled(help_rect, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
+            .rect_filled(help_rect, t.corner_icon(), t.icon_hover_bg);
     }
     let help_galley = text_align::layout_vcentered_galley(
         ui,
         "?".to_string(),
         ui_font_id(14.0),
-        DRAWER_WEAK_TEXT,
+        t.weak_text,
         ICON_ROW_LINE_HEIGHT,
     );
     text_align::paint_galley_row_centered(
@@ -525,7 +535,7 @@ fn draw_footer_help(ui: &mut Ui) {
         help_rect.center().x - help_galley.size().x * 0.5,
         help_rect.center().y,
         help_galley,
-        DRAWER_WEAK_TEXT,
+        t.weak_text,
     );
     if help.hovered() {
         egui::show_tooltip_at_pointer(

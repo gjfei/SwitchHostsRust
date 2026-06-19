@@ -2,24 +2,19 @@
 
 use eframe::egui::{self, Color32, CornerRadius, FontId, Pos2, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::{SWITCH_HEIGHT, SWITCH_WIDTH};
+use crate::theme::{self, layout};
 
-/// 对齐 `light.scss` `--swh-switch-button-*`
-const SWITCH_OFF_TRACK: Color32 = Color32::from_rgb(204, 204, 204); // #ccc
-const SWITCH_OFF_KNOB: Color32 = Color32::from_rgb(153, 153, 153); // #999
-const SWITCH_ON_TRACK: Color32 = Color32::WHITE;
-const SWITCH_ON_KNOB: Color32 = Color32::from_rgb(145, 217, 130); // #91d982
 /// 滑块与轨道边缘的间距
 const SWITCH_KNOB_INSET: f32 = 1.5;
 
 pub fn toggle_switch(ui: &mut egui::Ui, on: bool) -> egui::Response {
-    let size = Vec2::new(SWITCH_WIDTH, SWITCH_HEIGHT);
+    let size = Vec2::new(layout::SWITCH_WIDTH, layout::SWITCH_HEIGHT);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     paint_toggle_switch(ui, rect, on);
     response
 }
 
-/// 在固定矩形内绘制并检测开关点击（用于树行等自定义布局）。
+/// 在固定矩形内绘制并检测开关点击（用于树行等自定义 layout）。
 pub fn toggle_switch_at(
     ui: &mut Ui,
     rect: egui::Rect,
@@ -35,16 +30,17 @@ fn paint_toggle_switch(ui: &Ui, rect: egui::Rect, on: bool) {
     if !ui.is_rect_visible(rect) {
         return;
     }
-    let radius = CornerRadius::same((SWITCH_HEIGHT * 0.5).round() as u8);
+    let t = theme::app(ui.ctx());
+    let radius = CornerRadius::same((layout::SWITCH_HEIGHT * 0.5).round() as u8);
     let (track, knob, ring) = if on {
-        (SWITCH_ON_TRACK, SWITCH_ON_KNOB, SWITCH_ON_KNOB)
+        (t.switch_on_track, t.switch_on_knob, t.switch_on_knob)
     } else {
-        (SWITCH_OFF_TRACK, SWITCH_OFF_KNOB, SWITCH_OFF_KNOB)
+        (t.switch_off_track, t.switch_off_knob, t.switch_off_knob)
     };
     ui.painter().rect_filled(rect, radius, track);
     ui.painter()
         .rect_stroke(rect, radius, Stroke::new(1.0, ring), StrokeKind::Inside);
-    let knob_r = (SWITCH_HEIGHT - SWITCH_KNOB_INSET * 2.0) * 0.5;
+    let knob_r = (layout::SWITCH_HEIGHT - SWITCH_KNOB_INSET * 2.0) * 0.5;
     let cy = rect.center().y;
     let cx = if on {
         rect.right() - SWITCH_KNOB_INSET - knob_r

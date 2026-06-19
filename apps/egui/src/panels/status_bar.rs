@@ -7,7 +7,7 @@ use eframe::egui::{Stroke, Ui};
 use crate::fonts::ui_font_id;
 use crate::panels::widgets::format_bytes;
 use crate::text_align;
-use crate::theme::{EDITOR_LINE_NUMBER, SEPARATOR, STATUS_BAR_HEIGHT};
+use crate::theme::{self, layout};
 
 const STATUS_TEXT_LINE_HEIGHT: f32 = 12.0;
 
@@ -35,13 +35,14 @@ pub fn editor_status(
 }
 
 pub fn draw_status_bar(ui: &mut Ui, status: &EditorStatus) {
-    ui.set_min_height(STATUS_BAR_HEIGHT);
-    ui.set_max_height(STATUS_BAR_HEIGHT);
+    let t = theme::app(ui.ctx());
+    ui.set_min_height(layout::STATUS_BAR_HEIGHT);
+    ui.set_max_height(layout::STATUS_BAR_HEIGHT);
     ui.set_width(ui.available_width());
 
     let rect = ui.max_rect();
     ui.painter()
-        .hline(rect.x_range(), rect.top(), Stroke::new(1.0, SEPARATOR));
+        .hline(rect.x_range(), rect.top(), Stroke::new(1.0, t.separator));
 
     let cy = rect.center().y;
     let font = ui_font_id(10.0);
@@ -52,11 +53,11 @@ pub fn draw_status_bar(ui: &mut Ui, status: &EditorStatus) {
         ui,
         main,
         font.clone(),
-        EDITOR_LINE_NUMBER,
+        t.editor_line_number,
         STATUS_TEXT_LINE_HEIGHT,
     );
     let main_w = galley.size().x;
-    text_align::paint_galley_row_centered(ui, x, cy, galley, EDITOR_LINE_NUMBER);
+    text_align::paint_galley_row_centered(ui, x, cy, galley, t.editor_line_number);
     x += main_w;
 
     if status.read_only && status.line_count > 0 {
@@ -64,9 +65,9 @@ pub fn draw_status_bar(ui: &mut Ui, status: &EditorStatus) {
             ui,
             " · 只读".to_string(),
             font,
-            EDITOR_LINE_NUMBER,
+            t.editor_line_number,
             STATUS_TEXT_LINE_HEIGHT,
         );
-        text_align::paint_galley_row_centered(ui, x, cy, ro, EDITOR_LINE_NUMBER);
+        text_align::paint_galley_row_centered(ui, x, cy, ro, t.editor_line_number);
     }
 }

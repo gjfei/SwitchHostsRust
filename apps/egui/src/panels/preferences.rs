@@ -14,14 +14,11 @@ use crate::fonts::ui_font_id;
 use crate::icons::Icon;
 use crate::segmented::{SegmentedConfig, segmented_text_values};
 use crate::panels::drawer::{
-    backdrop_dismiss_clicked, drawer_frame, drawer_select, draw_drawer_header, outline_button,
+    backdrop_dismiss_clicked, drawer_panel_frame, drawer_select, draw_drawer_header, outline_button,
     paint_side_drawer_backdrop, primary_button, side_drawer_geometry, DRAWER_BTN_H,
-    DRAWER_INPUT_HEIGHT, DRAWER_INPUT_TEXT, DRAWER_SHADOW,
+    DRAWER_INPUT_HEIGHT,
 };
-use crate::theme::{
-    ACCENT, DRAWER_FOOTER_HEIGHT, DRAWER_INPUT_BORDER, DRAWER_INPUT_RADIUS, DRAWER_PAD,
-    DRAWER_SECTION_GAP, DRAWER_WEAK_TEXT, DRAWER_WIDTH, SEPARATOR,
-};
+use crate::theme::{self, layout};
 
 const TAB_BAR_H: f32 = 40.0;
 const TAB_CONTENT_PAD_Y: f32 = 20.0;
@@ -128,7 +125,7 @@ pub fn draw_preferences_drawer(
 
     let mut action = PreferencesAction::None;
     let allow_backdrop_dismiss = state.open_last_frame;
-    let geom = side_drawer_geometry(ctx, DRAWER_WIDTH);
+    let geom = side_drawer_geometry(ctx, layout::DRAWER_WIDTH_LG);
 
     paint_side_drawer_backdrop(ctx, "pref_backdrop", geom.backdrop_rect);
     if allow_backdrop_dismiss
@@ -146,9 +143,8 @@ pub fn draw_preferences_drawer(
             ui.set_min_size(geom.area_rect.size());
             ui.set_max_size(geom.area_rect.size());
 
-            drawer_frame()
+            drawer_panel_frame(ctx)
                 .outer_margin(geom.shadow_margin)
-                .shadow(DRAWER_SHADOW)
                 .show(ui, |ui| {
                     ui.set_width(geom.drawer_rect.width());
                     ui.set_height(geom.drawer_rect.height());
@@ -159,7 +155,7 @@ pub fn draw_preferences_drawer(
                         }
 
                         let footer_h = if state.active_tab.needs_footer() {
-                            DRAWER_FOOTER_HEIGHT
+                            layout::DRAWER_FOOTER_HEIGHT
                         } else {
                             0.0
                         };
@@ -168,45 +164,54 @@ pub fn draw_preferences_drawer(
                             ui.cursor().min,
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
-                        ui.painter().rect_filled(body_rect, 0.0, Color32::WHITE);
+                        ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
                         ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             draw_tab_bar(ui, &mut state.active_tab);
                             ScrollArea::vertical()
+                                .id_salt("pref_drawer_body")
                                 .auto_shrink([false; 2])
+                                .scroll_bar_visibility(
+                                    egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                                )
                                 .show(ui, |ui| {
-                                    ui.add_space(TAB_CONTENT_PAD_Y);
-                                    ui.set_width(ui.available_width() - DRAWER_PAD * 2.0);
-                                    ui.indent("pref_body", |ui| {
-                                        match state.active_tab {
-                                            PrefTab::General => draw_general_tab(
-                                                ui,
-                                                config,
-                                                paths,
-                                                &mut action,
-                                            ),
-                                            PrefTab::Commands => draw_commands_tab(
-                                                ui,
-                                                state,
-                                                paths,
-                                            ),
-                                            PrefTab::Proxy => draw_proxy_tab(ui, state),
-                                            PrefTab::Advanced => draw_advanced_tab(
-                                                ui,
-                                                config,
-                                                paths,
-                                                &mut action,
-                                            ),
-                                        }
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(layout::DRAWER_PAD);
+                                        ui.vertical(|ui| {
+                                            ui.set_width(
+                                                layout::DRAWER_WIDTH_LG - layout::DRAWER_PAD * 2.0,
+                                            );
+                                            ui.add_space(TAB_CONTENT_PAD_Y);
+                                            match state.active_tab {
+                                                PrefTab::General => draw_general_tab(
+                                                    ui,
+                                                    config,
+                                                    paths,
+                                                    &mut action,
+                                                ),
+                                                PrefTab::Commands => draw_commands_tab(
+                                                    ui,
+                                                    state,
+                                                    paths,
+                                                ),
+                                                PrefTab::Proxy => draw_proxy_tab(ui, state),
+                                                PrefTab::Advanced => draw_advanced_tab(
+                                                    ui,
+                                                    config,
+                                                    paths,
+                                                    &mut action,
+                                                ),
+                                            }
+                                            ui.add_space(60.0);
+                                        });
                                     });
-                                    ui.add_space(60.0);
                                 });
                         });
 
                         if state.active_tab.needs_footer() {
                             let footer_rect = egui::Rect::from_min_size(
                                 ui.cursor().min,
-                                Vec2::new(geom.drawer_rect.width(), DRAWER_FOOTER_HEIGHT),
+                                Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
                             );
                             ui.allocate_new_ui(
                                 egui::UiBuilder::new().max_rect(footer_rect),
@@ -234,9 +239,10 @@ pub fn draw_preferences_drawer(
 }
 
 fn draw_tab_bar(ui: &mut Ui, active: &mut PrefTab) {
+    let t = theme::app(ui.ctx());
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, TAB_BAR_H), Sense::hover());
-    ui.painter().hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, SEPARATOR));
+    ui.painter().hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, t.separator));
 
     let tabs = [
         PrefTab::General,
@@ -255,11 +261,11 @@ fn draw_tab_bar(ui: &mut Ui, active: &mut PrefTab) {
             *active = *tab;
         }
         let color = if *active == *tab {
-            ACCENT
+            t.accent
         } else if resp.hovered() {
-            DRAWER_INPUT_TEXT
+            t.text
         } else {
-            DRAWER_WEAK_TEXT
+            t.weak_text
         };
         ui.painter().text(
             tab_rect.center(),
@@ -272,7 +278,7 @@ fn draw_tab_bar(ui: &mut Ui, active: &mut PrefTab) {
             ui.painter().hline(
                 egui::Rangef::new(tab_rect.left() + 8.0, tab_rect.right() - 8.0),
                 tab_rect.bottom() - 1.0,
-                Stroke::new(2.0, ACCENT),
+                Stroke::new(2.0, t.accent),
             );
         }
     }
@@ -303,12 +309,12 @@ fn draw_general_tab(
             }
         });
     });
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
 
     pref_grid_row(ui, "主题", |ui| {
         theme_segmented(ui, config, paths, action);
     });
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
 
     pref_grid_row(ui, "写入模式", |ui| {
         ui.vertical(|ui| {
@@ -320,7 +326,7 @@ fn draw_general_tab(
             });
         });
     });
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
 
     pref_grid_row(ui, "选择模式", |ui| {
         ui.vertical(|ui| {
@@ -328,7 +334,7 @@ fn draw_general_tab(
             pref_description(ui, "控制顶层 hosts 方案的单选或多选行为。");
         });
     });
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
 
     save_if_changed(
         pref_checkbox(ui, &mut config.launch_at_login, "登录时启动", None),
@@ -372,17 +378,18 @@ fn draw_general_tab(
 }
 
 fn draw_commands_tab(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths) {
+    let t = theme::app(ui.ctx());
     ui.label(
         RichText::new("应用 hosts 后执行的命令")
             .size(14.0)
-            .color(DRAWER_INPUT_TEXT),
+            .color(t.text),
     );
     pref_description(ui, "每次成功写入系统 hosts 后，将执行以下 shell 命令（超时 30 秒）。");
     ui.add_space(8.0);
 
     egui::Frame::new()
-        .stroke(Stroke::new(1.0, DRAWER_INPUT_BORDER))
-        .corner_radius(DRAWER_INPUT_RADIUS)
+        .stroke(Stroke::new(1.0, t.input_border))
+        .corner_radius(t.corner_input())
         .inner_margin(8.0)
         .show(ui, |ui| {
             ui.add(
@@ -413,6 +420,7 @@ fn draw_commands_tab(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths
 }
 
 fn draw_proxy_tab(ui: &mut Ui, state: &mut PreferencesState) {
+    let t = theme::app(ui.ctx());
     pref_checkbox_draft(
         ui,
         &mut state.draft_use_proxy,
@@ -424,7 +432,7 @@ fn draw_proxy_tab(ui: &mut Ui, state: &mut PreferencesState) {
     let enabled = state.draft_use_proxy;
     ui.add_enabled_ui(enabled, |ui| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("协议").size(14.0).color(DRAWER_WEAK_TEXT));
+            ui.label(RichText::new("协议").size(14.0).color(t.weak_text));
             ui.add_space(8.0);
             drawer_select(
                 ui,
@@ -445,7 +453,7 @@ fn draw_proxy_tab(ui: &mut Ui, state: &mut PreferencesState) {
         });
         ui.add_space(12.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("主机").size(14.0).color(DRAWER_WEAK_TEXT));
+            ui.label(RichText::new("主机").size(14.0).color(t.weak_text));
             ui.add_space(8.0);
             ui.add(
                 egui::TextEdit::singleline(&mut state.draft_proxy_host)
@@ -455,7 +463,7 @@ fn draw_proxy_tab(ui: &mut Ui, state: &mut PreferencesState) {
         });
         ui.add_space(12.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("端口").size(14.0).color(DRAWER_WEAK_TEXT));
+            ui.label(RichText::new("端口").size(14.0).color(t.weak_text));
             ui.add_space(8.0);
             ui.add(
                 egui::DragValue::new(&mut state.draft_proxy_port)
@@ -546,7 +554,8 @@ fn draw_advanced_tab(
         action,
     );
 
-    ui.indent("http_api_local", |ui| {
+    ui.horizontal(|ui| {
+        ui.add_space(layout::CHECKBOX_NESTED_INDENT);
         ui.add_enabled_ui(config.http_api_on, |ui| {
             save_if_changed(
                 pref_checkbox(
@@ -562,11 +571,12 @@ fn draw_advanced_tab(
         });
     });
 
-    ui.add_space(DRAWER_SECTION_GAP);
+    let t = theme::app(ui.ctx());
+    ui.add_space(layout::DRAWER_SECTION_GAP);
     ui.label(
         RichText::new("帮助改进 SwitchHosts")
             .size(14.0)
-            .color(DRAWER_INPUT_TEXT),
+            .color(t.text),
     );
     pref_description(ui, "可选发送匿名使用数据以帮助改进产品（当前版本尚未接入上报）。");
     save_if_changed(
@@ -581,30 +591,31 @@ fn draw_advanced_tab(
         action,
     );
 
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
     ui.label(
         RichText::new("我的 hosts 文件在哪？")
             .size(14.0)
-            .color(DRAWER_INPUT_TEXT),
+            .color(t.text),
     );
     pref_description(ui, "系统 hosts 文件路径：");
     let hosts_path = system_hosts_path();
     draw_path_link(ui, &hosts_path);
 
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
     ui.label(
         RichText::new("我的数据在哪？")
             .size(14.0)
-            .color(DRAWER_INPUT_TEXT),
+            .color(t.text),
     );
     pref_description(ui, "SwitchHosts 数据目录：");
     draw_path_link(ui, &paths.root);
 }
 
 fn draw_cmd_history(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths) {
+    let t = theme::app(ui.ctx());
     if state.cmd_history.is_empty() {
         ui.centered_and_justified(|ui| {
-            ui.label(RichText::new("暂无记录").size(13.0).color(DRAWER_WEAK_TEXT));
+            ui.label(RichText::new("暂无记录").size(13.0).color(t.weak_text));
         });
         return;
     }
@@ -628,19 +639,19 @@ fn draw_cmd_history(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths)
         };
         egui::Frame::new()
             .fill(color)
-            .corner_radius(DRAWER_INPUT_RADIUS)
+            .corner_radius(t.corner_input())
             .inner_margin(10.0)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("#{}", item.id))
                             .size(12.0)
-                            .color(DRAWER_INPUT_TEXT),
+                            .color(t.text),
                     );
                     ui.label(
                         RichText::new(format_cmd_time(item.add_time_ms))
                             .size(12.0)
-                            .color(DRAWER_WEAK_TEXT),
+                            .color(t.weak_text),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if outline_button(ui, "删除").clicked() {
@@ -655,7 +666,7 @@ fn draw_cmd_history(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths)
                     ui.label(
                         RichText::new(&item.stdout)
                             .size(12.0)
-                            .color(DRAWER_INPUT_TEXT),
+                            .color(t.text),
                     );
                 }
                 if !item.stderr.is_empty() {
@@ -663,7 +674,7 @@ fn draw_cmd_history(ui: &mut Ui, state: &mut PreferencesState, paths: &AppPaths)
                     ui.label(
                         RichText::new(&item.stderr)
                             .size(12.0)
-                            .color(DRAWER_INPUT_TEXT),
+                            .color(t.text),
                     );
                 }
             });
@@ -679,10 +690,9 @@ fn draw_draft_footer(
     action: &mut PreferencesAction,
 ) -> bool {
     let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, DRAWER_FOOTER_HEIGHT), Sense::hover());
-    ui.painter().hline(rect.x_range(), rect.top(), Stroke::new(1.0, SEPARATOR));
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
 
-    let row_top = rect.top() + (DRAWER_FOOTER_HEIGHT - DRAWER_BTN_H) * 0.5;
+    let row_top = rect.top() + (layout::DRAWER_FOOTER_HEIGHT - DRAWER_BTN_H) * 0.5;
     let row_rect = egui::Rect::from_min_max(
         egui::pos2(rect.left(), row_top),
         egui::pos2(rect.right(), row_top + DRAWER_BTN_H),
@@ -691,7 +701,7 @@ fn draw_draft_footer(
     let mut saved = false;
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(row_rect), |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(DRAWER_PAD);
+            ui.add_space(layout::DRAWER_PAD);
             let label = match state.draft_save_status {
                 DraftSaveStatus::Saved => "已保存",
                 DraftSaveStatus::Idle => "保存",
@@ -722,7 +732,10 @@ fn draw_draft_footer(
 fn pref_checkbox(ui: &mut Ui, value: &mut bool, label: &str, desc: Option<&str>) -> bool {
     let changed = ui.checkbox(value, label).changed();
     if let Some(d) = desc {
-        ui.indent("desc", |ui| pref_description(ui, d));
+        ui.horizontal(|ui| {
+            ui.add_space(layout::CHECKBOX_NESTED_INDENT);
+            pref_description(ui, d);
+        });
     }
     ui.add_space(12.0);
     changed
@@ -742,18 +755,22 @@ fn save_if_changed(
 fn pref_checkbox_draft(ui: &mut Ui, value: &mut bool, label: &str, desc: Option<&str>) {
     ui.checkbox(value, label);
     if let Some(d) = desc {
-        ui.indent("desc", |ui| pref_description(ui, d));
+        ui.horizontal(|ui| {
+            ui.add_space(layout::CHECKBOX_NESTED_INDENT);
+            pref_description(ui, d);
+        });
     }
     ui.add_space(12.0);
 }
 
 fn pref_grid_row(ui: &mut Ui, label: &str, body: impl FnOnce(&mut Ui)) {
+    let t = theme::app(ui.ctx());
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
             Vec2::new(88.0, DRAWER_INPUT_HEIGHT),
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
-                ui.label(RichText::new(label).size(14.0).color(DRAWER_INPUT_TEXT));
+                ui.label(RichText::new(label).size(14.0).color(t.text));
             },
         );
         body(ui);
@@ -761,7 +778,11 @@ fn pref_grid_row(ui: &mut Ui, label: &str, body: impl FnOnce(&mut Ui)) {
 }
 
 fn pref_description(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(12.0).color(DRAWER_WEAK_TEXT));
+    ui.label(
+        RichText::new(text)
+            .size(12.0)
+            .color(theme::app(ui.ctx()).weak_text),
+    );
 }
 
 fn draw_path_link(ui: &mut Ui, path: &std::path::Path) {

@@ -1,26 +1,14 @@
 //! 右侧 SideDrawer 共享壳层（编辑 / 历史等抽屉复用）。
 
-use eframe::egui::{self, Color32, CornerRadius, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    ACCENT, DRAWER_BORDER, DRAWER_INPUT_BORDER, DRAWER_INPUT_RADIUS, DRAWER_OFFSET, DRAWER_PAD,
-    DRAWER_RADIUS, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS, TREE_TEXT,
-};
+use crate::theme::{self, layout};
 
-pub const DRAWER_INPUT_HEIGHT: f32 = 36.0;
-pub const DRAWER_INPUT_TEXT: Color32 = Color32::from_rgb(30, 30, 35);
-pub const DRAWER_INPUT_H_PAD: f32 = 12.0;
-pub const DRAWER_BTN_H: f32 = 36.0;
-pub const DRAWER_BTN_MIN_W: f32 = 88.0;
-pub const DRAWER_CORNER_RADIUS: CornerRadius = CornerRadius::same(DRAWER_RADIUS as u8);
-pub const DRAWER_SHADOW: egui::epaint::Shadow = egui::epaint::Shadow {
-    offset: [0, 4],
-    blur: 16,
-    spread: 0,
-    color: Color32::from_black_alpha(30),
+pub use layout::{
+    DRAWER_BTN_H, DRAWER_BTN_MIN_W, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT,
 };
 
 /// 抽屉几何（对齐 `edit_hosts` / `SideDrawer` 右侧 inset）。
@@ -32,17 +20,19 @@ pub struct SideDrawerGeometry {
 }
 
 pub fn side_drawer_geometry(ctx: &egui::Context, width: f32) -> SideDrawerGeometry {
+    let t = theme::app(ctx);
+    let shadow = t.drawer_shadow();
     let screen = ctx.input(|i| i.screen_rect());
     let backdrop_rect = screen;
     let drawer_rect = {
-        let inset = screen.shrink2(Vec2::splat(DRAWER_OFFSET));
+        let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
         egui::Rect::from_min_max(
             egui::pos2(inset.right() - width, inset.top()),
             egui::pos2(inset.right(), inset.bottom()),
         )
     };
     let shadow_margin = {
-        let sm = DRAWER_SHADOW.margin();
+        let sm = shadow.margin();
         egui::Margin {
             left: sm.left.ceil() as i8,
             right: sm.right.ceil() as i8,
@@ -93,37 +83,38 @@ pub fn backdrop_dismiss_clicked(
 
 /// 标题栏 + 关闭按钮（hover 圆角底）。
 pub fn draw_drawer_header(ui: &mut Ui, icon: Icon, title: &str, close_id: &str) -> bool {
+    let t = theme::app(ui.ctx());
     let mut close = false;
     let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, crate::theme::DRAWER_HEADER_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_HEADER_HEIGHT), Sense::hover());
     let cy = rect.center().y;
     text_align::paint_icon_text_row(
         ui,
         cy,
-        rect.left() + DRAWER_PAD,
+        rect.left() + layout::DRAWER_PAD,
         icon,
         18.0,
         10.0,
         title,
         ui_font_id(16.0),
-        Color32::BLACK,
+        t.text,
         18.0,
     );
     let close_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - DRAWER_PAD - 14.0, cy),
+        egui::pos2(rect.right() - layout::DRAWER_PAD - 14.0, cy),
         Vec2::splat(28.0),
     );
     let close_resp = ui.interact(close_rect, ui.id().with(close_id), Sense::click());
     if close_resp.hovered() {
         ui.painter()
-            .rect_filled(close_rect, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
+            .rect_filled(close_rect, t.corner_icon(), t.icon_hover_bg);
     }
     icons::paint_icon(
         ui,
         Icon::X,
         close_rect.center(),
         18.0,
-        Color32::from_rgb(100, 100, 110),
+        t.nav_icon_inactive_tint,
     );
     if close_resp.clicked() {
         close = true;
@@ -139,8 +130,9 @@ pub fn drawer_text_button(
     text_color: Color32,
     enabled: bool,
 ) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let (rect, mut response) = ui.allocate_at_least(
-        Vec2::new(DRAWER_BTN_MIN_W, DRAWER_BTN_H),
+        Vec2::new(layout::DRAWER_BTN_MIN_W, layout::DRAWER_BTN_H),
         if enabled {
             Sense::click()
         } else {
@@ -152,14 +144,14 @@ pub fn drawer_text_button(
             (fill, stroke, text_color)
         } else {
             (
-                Color32::from_rgb(248, 249, 250),
-                Stroke::new(1.0, DRAWER_INPUT_BORDER),
-                Color32::from_rgb(180, 180, 190),
+                t.window_bg,
+                Stroke::new(1.0, t.input_border),
+                t.weak_text,
             )
         };
         ui.painter().rect(
             rect,
-            DRAWER_INPUT_RADIUS,
+            t.corner_input(),
             fill,
             stroke,
             egui::StrokeKind::Inside,
@@ -186,7 +178,8 @@ pub fn drawer_text_button(
 }
 
 pub fn primary_button(ui: &mut Ui, label: &str) -> egui::Response {
-    drawer_text_button(ui, label, ACCENT, Stroke::NONE, Color32::WHITE, true)
+    let t = theme::app(ui.ctx());
+    drawer_text_button(ui, label, t.accent, Stroke::NONE, t.text_selected, true)
 }
 
 pub fn outline_button(ui: &mut Ui, label: &str) -> egui::Response {
@@ -194,12 +187,13 @@ pub fn outline_button(ui: &mut Ui, label: &str) -> egui::Response {
 }
 
 pub fn outline_button_enabled(ui: &mut Ui, label: &str, enabled: bool) -> egui::Response {
+    let t = theme::app(ui.ctx());
     drawer_text_button(
         ui,
         label,
-        Color32::WHITE,
-        Stroke::new(1.0, ACCENT),
-        ACCENT,
+        t.editor_bg,
+        Stroke::new(1.0, t.accent),
+        t.accent,
         enabled,
     )
 }
@@ -211,19 +205,20 @@ pub fn outline_button_with_icon(
     danger: bool,
     enabled: bool,
 ) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let stroke = if danger {
-        Stroke::new(1.0, ACCENT)
+        Stroke::new(1.0, t.accent)
     } else {
-        Stroke::new(1.0, DRAWER_INPUT_BORDER)
+        Stroke::new(1.0, t.input_border)
     };
     let text_color = if enabled {
         if danger {
-            ACCENT
+            t.accent
         } else {
-            Color32::from_rgb(60, 60, 70)
+            t.text
         }
     } else {
-        Color32::from_rgb(180, 180, 190)
+        t.weak_text
     };
     let galley = text_align::layout_vcentered_galley(
         ui,
@@ -233,33 +228,33 @@ pub fn outline_button_with_icon(
         ICON_ROW_LINE_HEIGHT,
     );
     let content_w = Icon::DEFAULT_SIZE + 8.0 + galley.size().x;
-    let btn_w = (content_w + DRAWER_INPUT_H_PAD * 2.0).max(DRAWER_BTN_MIN_W);
-    let (rect, mut response) = ui.allocate_at_least(Vec2::new(btn_w, DRAWER_BTN_H), if enabled {
+    let btn_w = (content_w + layout::DRAWER_INPUT_H_PAD * 2.0).max(layout::DRAWER_BTN_MIN_W);
+    let (rect, mut response) = ui.allocate_at_least(Vec2::new(btn_w, layout::DRAWER_BTN_H), if enabled {
         Sense::click()
     } else {
         Sense::hover()
     });
     if ui.is_rect_visible(rect) {
         let fill = if enabled {
-            Color32::WHITE
+            t.editor_bg
         } else {
-            Color32::from_rgb(248, 249, 250)
+            t.window_bg
         };
         ui.painter().rect(
             rect,
-            DRAWER_INPUT_RADIUS,
+            t.corner_input(),
             fill,
             if enabled {
                 stroke
             } else {
-                Stroke::new(1.0, DRAWER_INPUT_BORDER)
+                Stroke::new(1.0, t.input_border)
             },
             egui::StrokeKind::Inside,
         );
         text_align::paint_icon_text_row(
             ui,
             rect.center().y,
-            rect.left() + DRAWER_INPUT_H_PAD,
+            rect.left() + layout::DRAWER_INPUT_H_PAD,
             icon,
             Icon::DEFAULT_SIZE,
             8.0,
@@ -276,13 +271,14 @@ pub fn outline_button_with_icon(
 }
 
 fn with_flat_combo_style<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let t = theme::app(ui.ctx());
     let style = ui.style_mut();
     let saved_inactive = style.visuals.widgets.inactive;
     let saved_hovered = style.visuals.widgets.hovered;
     let saved_open = style.visuals.widgets.open;
     let saved_btn_pad = style.spacing.button_padding;
 
-    let text_stroke = Stroke::new(1.0, DRAWER_INPUT_TEXT);
+    let text_stroke = Stroke::new(1.0, t.text);
     for widget in [
         &mut style.visuals.widgets.inactive,
         &mut style.visuals.widgets.hovered,
@@ -314,31 +310,32 @@ pub fn drawer_select(
     selected: &str,
     menu: impl FnOnce(&mut Ui),
 ) {
+    let t = theme::app(ui.ctx());
     let combo_id = egui::Id::new(id_salt);
     let is_open = egui::ComboBox::is_open(ui.ctx(), combo_id);
-    let inner_w = (width - DRAWER_INPUT_H_PAD * 2.0).max(0.0);
+    let inner_w = (width - layout::DRAWER_INPUT_H_PAD * 2.0).max(0.0);
 
     let (row_rect, _) = ui.allocate_exact_size(
-        Vec2::new(width, DRAWER_INPUT_HEIGHT),
+        Vec2::new(width, layout::DRAWER_INPUT_HEIGHT),
         Sense::hover(),
     );
 
     ui.painter().rect(
         row_rect,
-        DRAWER_INPUT_RADIUS,
-        Color32::WHITE,
+        t.corner_input(),
+        t.editor_bg,
         Stroke::new(
             1.0,
             if is_open {
-                ACCENT
+                t.accent
             } else {
-                DRAWER_INPUT_BORDER
+                t.input_border
             },
         ),
         egui::StrokeKind::Inside,
     );
 
-    let inner_rect = row_rect.shrink2(egui::vec2(DRAWER_INPUT_H_PAD, 0.0));
+    let inner_rect = row_rect.shrink2(egui::vec2(layout::DRAWER_INPUT_H_PAD, 0.0));
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_height(inner_rect.height());
@@ -348,7 +345,7 @@ pub fn drawer_select(
                     .selected_text(
                         RichText::new(selected)
                             .size(14.0)
-                            .color(DRAWER_INPUT_TEXT)
+                            .color(t.text)
                             .font(ui_font_id(14.0)),
                     )
                     .show_ui(ui, menu);
@@ -359,21 +356,22 @@ pub fn drawer_select(
 
 /// Mantine Select 下拉项：选中项浅红底 + 主色文字。
 pub fn drawer_select_option(ui: &mut Ui, current: &mut u64, value: u64, label: &str) {
+    let t = theme::app(ui.ctx());
     let selected = *current == value;
     let row_h = 28.0;
-    let text_color = if selected { ACCENT } else { DRAWER_INPUT_TEXT };
+    let text_color = if selected { t.accent } else { t.text };
     let (rect, mut response) =
         ui.allocate_at_least(Vec2::new(ui.available_width(), row_h), Sense::click());
     if ui.is_rect_visible(rect) {
         let fill = if selected {
-            crate::theme::TREE_HOVER
+            t.tree_hover
         } else if response.hovered() {
-            TOP_BAR_ICON_HOVER
+            t.icon_hover_bg
         } else {
-            Color32::WHITE
+            t.editor_bg
         };
         ui.painter()
-            .rect_filled(rect, DRAWER_INPUT_RADIUS, fill);
+            .rect_filled(rect, t.corner_input(), fill);
         let galley = text_align::layout_vcentered_galley(
             ui,
             label.to_owned(),
@@ -390,11 +388,18 @@ pub fn drawer_select_option(ui: &mut Ui, current: &mut u64, value: u64, label: &
 }
 
 /// 抽屉白底 + 圆角 + 边框 + 阴影 Frame。
-pub fn drawer_frame() -> egui::Frame {
+pub fn drawer_frame(ctx: &egui::Context) -> egui::Frame {
+    let t = theme::app(ctx);
     egui::Frame::new()
-        .fill(Color32::WHITE)
-        .corner_radius(DRAWER_CORNER_RADIUS)
-        .stroke(Stroke::new(1.0, DRAWER_BORDER))
+        .fill(t.editor_bg)
+        .corner_radius(t.corner_drawer())
+        .stroke(Stroke::new(1.0, t.border))
+}
+
+/// 带阴影的抽屉 Frame（对齐 SideDrawer）。
+pub fn drawer_panel_frame(ctx: &egui::Context) -> egui::Frame {
+    let t = theme::app(ctx);
+    drawer_frame(ctx).shadow(t.drawer_shadow())
 }
 
 /// 确认弹窗最大宽度（内容自适应，不超过此值）。
@@ -428,6 +433,7 @@ pub fn draw_confirm_modal(
     confirm_label: &str,
     _danger: bool,
 ) -> ConfirmModalResult {
+    let t = theme::app(ctx);
     let mut result = ConfirmModalResult::None;
     let screen = ctx.input(|i| i.screen_rect());
 
@@ -458,10 +464,10 @@ pub fn draw_confirm_modal(
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
                     egui::Frame {
-                        fill: Color32::WHITE,
-                        corner_radius: CornerRadius::same(DRAWER_RADIUS as u8),
+                        fill: t.editor_bg,
+                        corner_radius: t.corner_drawer(),
                         shadow: MODAL_SHADOW,
-                        inner_margin: egui::Margin::same(DRAWER_PAD as i8),
+                        inner_margin: egui::Margin::same(layout::DRAWER_PAD as i8),
                         ..Default::default()
                     }
                     .show(ui, |ui| {
@@ -469,13 +475,13 @@ pub fn draw_confirm_modal(
                             RichText::new(title)
                                 .size(16.0)
                                 .strong()
-                                .color(Color32::BLACK),
+                                .color(t.text),
                         );
                         ui.add_space(8.0);
                         ui.label(
                             RichText::new(message)
                                 .size(14.0)
-                                .color(TREE_TEXT),
+                                .color(t.text),
                         );
                         ui.add_space(CONFIRM_MODAL_MESSAGE_GAP);
                         ui.with_layout(
@@ -484,9 +490,9 @@ pub fn draw_confirm_modal(
                                 if drawer_text_button(
                                     ui,
                                     confirm_label,
-                                    ACCENT,
+                                    t.accent,
                                     Stroke::NONE,
-                                    Color32::WHITE,
+                                    t.text_selected,
                                     true,
                                 )
                                 .clicked()
@@ -497,9 +503,9 @@ pub fn draw_confirm_modal(
                                 if drawer_text_button(
                                     ui,
                                     "取消",
-                                    Color32::WHITE,
-                                    Stroke::new(1.0, DRAWER_INPUT_BORDER),
-                                    TREE_TEXT,
+                                    t.editor_bg,
+                                    Stroke::new(1.0, t.input_border),
+                                    t.text,
                                     true,
                                 )
                                 .clicked()
@@ -530,15 +536,16 @@ fn measure_text_width(ctx: &egui::Context, text: &str, font_id: egui::FontId) ->
 }
 
 fn confirm_modal_width(ctx: &egui::Context, title: &str, message: &str, confirm_label: &str) -> f32 {
-    let inner_max = CONFIRM_MODAL_MAX_WIDTH - DRAWER_PAD * 2.0;
+    let inner_max = CONFIRM_MODAL_MAX_WIDTH - layout::DRAWER_PAD * 2.0;
     let title_w = measure_text_width(ctx, title, ui_font_id(16.0));
     let message_w = measure_text_width(ctx, message, ui_font_id(14.0));
     let confirm_w = measure_text_width(ctx, confirm_label, ui_font_id(14.0));
     let buttons_row_w =
-        (confirm_w + DRAWER_INPUT_H_PAD * 2.0).max(DRAWER_BTN_MIN_W) * 2.0 + CONFIRM_MODAL_BTN_GAP;
+        (confirm_w + layout::DRAWER_INPUT_H_PAD * 2.0).max(layout::DRAWER_BTN_MIN_W) * 2.0
+            + CONFIRM_MODAL_BTN_GAP;
     let inner_w = title_w
         .max(message_w.min(inner_max))
         .max(buttons_row_w)
         .clamp(CONFIRM_MODAL_MIN_WIDTH, inner_max);
-    inner_w + DRAWER_PAD * 2.0
+    inner_w + layout::DRAWER_PAD * 2.0
 }

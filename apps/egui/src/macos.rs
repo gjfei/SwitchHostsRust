@@ -2,7 +2,7 @@
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use crate::theme::{TOP_BAR_HEIGHT, TOP_BAR_TRAFFIC_LIGHT_X, TOP_BAR_TRAFFIC_LIGHT_Y};
+use crate::theme::{self, layout};
 
 /// 将交通灯移入 40px 顶栏区域并垂直居中（对齐 `lifecycle.rs`）。
 /// 窗口尚未就绪时会失败，调用方应重试。
@@ -28,9 +28,9 @@ pub fn position_traffic_lights(handle: &impl HasWindowHandle) -> bool {
         };
         inset_traffic_lights(
             &window,
-            f64::from(TOP_BAR_TRAFFIC_LIGHT_X),
-            f64::from(TOP_BAR_TRAFFIC_LIGHT_Y),
-            f64::from(TOP_BAR_HEIGHT),
+            f64::from(layout::TOP_BAR_TRAFFIC_LIGHT_X),
+            f64::from(layout::TOP_BAR_TRAFFIC_LIGHT_Y),
+            f64::from(layout::TOP_BAR_HEIGHT),
         )
     }
 }
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn traffic_light_constants_match_switchhosts() {
-        assert_eq!(TOP_BAR_TRAFFIC_LIGHT_X, 12.0);
-        assert_eq!(TOP_BAR_TRAFFIC_LIGHT_Y, 18.0);
+        assert_eq!(layout::TOP_BAR_TRAFFIC_LIGHT_X, 12.0);
+        assert_eq!(layout::TOP_BAR_TRAFFIC_LIGHT_Y, 18.0);
     }
 }

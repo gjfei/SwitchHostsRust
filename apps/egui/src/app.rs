@@ -24,7 +24,7 @@ use crate::panels::{
     PreferencesAction, PreferencesState, TrashDeleteConfirmResult, TrashEvent, TreeEvent,
 };
 use crate::remote_refresh::{refresh_all_remote_hosts, refresh_remote_node};
-use crate::theme::{self, SIDEBAR_BG, STATUS_BAR_HEIGHT, TEST_BANNER_HEIGHT, TOP_BAR_HEIGHT, WINDOW_BG};
+use crate::theme::{self, layout};
 use crate::tray_native::{TrayAction, TrayController};
 
 pub struct SwitchHostsApp {
@@ -401,8 +401,8 @@ impl SwitchHostsApp {
 }
 
 impl eframe::App for SwitchHostsApp {
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Rgba::from(WINDOW_BG).to_array()
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Rgba::from(visuals.window_fill()).to_array()
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -410,6 +410,8 @@ impl eframe::App for SwitchHostsApp {
         self.poll_tray_events(ctx);
 
         self.tick_startup_remote_refresh(ctx);
+
+        let t = theme::app(ctx);
 
         if ctx.input(|i| {
             i.key_pressed(egui::Key::F) && (i.modifiers.command || i.modifiers.ctrl)
@@ -427,9 +429,9 @@ impl eframe::App for SwitchHostsApp {
         // 顶栏必须最先绘制（标题栏 overlay 区域），再绘制其下方的测试横幅。
         // 顶栏对齐原版 `background: transparent`，避免 egui 不透明填充盖住 macOS 交通灯。
         egui::TopBottomPanel::top("top_bar")
-            .exact_height(TOP_BAR_HEIGHT)
+            .exact_height(layout::TOP_BAR_HEIGHT)
             .show_separator_line(false)
-            .frame(top_bar_frame(&self.config))
+            .frame(top_bar_frame(&self.config, &t))
             .show(ctx, |ui| {
                 let action = draw_top_bar(
                     ui,
@@ -461,7 +463,7 @@ impl eframe::App for SwitchHostsApp {
 
         if self.test_mode {
             egui::TopBottomPanel::top("test_banner")
-                .exact_height(TEST_BANNER_HEIGHT)
+                .exact_height(layout::TEST_BANNER_HEIGHT)
                 .show_separator_line(false)
                 .frame(
                     egui::Frame::new()
@@ -469,8 +471,8 @@ impl eframe::App for SwitchHostsApp {
                         .inner_margin(egui::Margin::symmetric(8, 0)),
                 )
                 .show(ctx, |ui| {
-                    ui.set_min_height(TEST_BANNER_HEIGHT);
-                    ui.set_max_height(TEST_BANNER_HEIGHT);
+                    ui.set_min_height(layout::TEST_BANNER_HEIGHT);
+                    ui.set_max_height(layout::TEST_BANNER_HEIGHT);
                     ui.centered_and_justified(|ui| {
                         ui.colored_label(
                             egui::Color32::from_rgb(180, 100, 0),
@@ -544,10 +546,10 @@ impl eframe::App for SwitchHostsApp {
         }
 
         egui::TopBottomPanel::bottom("status_bar")
-            .exact_height(STATUS_BAR_HEIGHT)
+            .exact_height(layout::STATUS_BAR_HEIGHT)
             .frame(
                 egui::Frame::new()
-                    .fill(SIDEBAR_BG)
+                    .fill(t.sidebar_bg)
                     .inner_margin(0.0),
             )
             .show(ctx, |ui| {
@@ -562,7 +564,7 @@ impl eframe::App for SwitchHostsApp {
         if self.hosts_list_visible {
             egui::SidePanel::left("hosts_sidebar")
                 .default_width(self.config.left_panel_width as f32)
-                .frame(egui::Frame::new().fill(SIDEBAR_BG))
+                .frame(egui::Frame::new().fill(t.sidebar_bg))
                 .show(ctx, |ui| match self.nav_view {
                     NavView::Hosts => {
                         let event = draw_hosts_sidebar(
@@ -583,7 +585,7 @@ impl eframe::App for SwitchHostsApp {
         if self.config.right_panel_show {
             egui::SidePanel::right("details_panel")
                 .default_width(self.config.right_panel_width as f32)
-                .frame(egui::Frame::new().fill(theme::WINDOW_BG).inner_margin(0.0))
+                .frame(egui::Frame::new().fill(t.window_bg).inner_margin(0.0))
                 .show(ctx, |ui| {
                     let action = draw_details(
                         ui,
@@ -600,7 +602,7 @@ impl eframe::App for SwitchHostsApp {
 
         let editor_text_before = self.editor_text.clone();
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::EDITOR_BG).inner_margin(0.0))
+            .frame(egui::Frame::new().fill(t.editor_bg).inner_margin(0.0))
             .show(ctx, |ui| {
                 draw_editor_panel(
                     ui,
@@ -689,11 +691,11 @@ impl eframe::App for SwitchHostsApp {
     }
 }
 
-fn top_bar_frame(config: &AppConfig) -> egui::Frame {
+fn top_bar_frame(config: &AppConfig, t: &theme::AppTheme) -> egui::Frame {
     let fill = if cfg!(target_os = "macos") && !config.use_system_window_frame {
         egui::Color32::TRANSPARENT
     } else {
-        theme::TOP_BAR_BG
+        t.top_bar_bg
     };
     egui::Frame::new().fill(fill).inner_margin(0.0)
 }

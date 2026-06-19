@@ -10,10 +10,7 @@ use eframe::egui::text::{CCursor, CCursorRange, LayoutJob, TextFormat};
 use eframe::egui::widgets::text_edit::TextEditOutput;
 use eframe::egui::{self, Color32, FontId, Id, RichText, Sense, Stroke, TextStyle, Ui, Vec2};
 
-use crate::theme::{
-    EDITOR_BG, EDITOR_COMMENT, EDITOR_ERROR, EDITOR_FONT_SIZE, EDITOR_IP, EDITOR_LINE_NUMBER,
-    EDITOR_READONLY_BG, EDITOR_TEXT,
-};
+use crate::theme::{self, layout};
 
 const EDITOR_WIDGET_ID: &str = "hosts_code_editor";
 /// 对齐 CodeMirror `.cm-content { padding: 8px 0 }`
@@ -29,7 +26,7 @@ struct EditorMetrics {
 
 impl EditorMetrics {
     fn from_ui(ui: &Ui) -> Self {
-        let font_id = FontId::monospace(EDITOR_FONT_SIZE);
+        let font_id = FontId::monospace(layout::EDITOR_FONT_SIZE);
         let row_height = ui.fonts(|fonts| fonts.row_height(&font_id));
         Self { font_id, row_height }
     }
@@ -40,10 +37,11 @@ impl EditorMetrics {
 
     /// 按最大行号位数计算 gutter 宽度（对齐 CodeMirror 自动 gutter）。
     fn gutter_width(&self, ui: &Ui, line_count: usize) -> f32 {
+        let t = theme::app(ui.ctx());
         let widest = format!("{}", line_count.max(1));
         let text_w = ui
             .painter()
-            .layout_no_wrap(widest, self.font_id.clone(), EDITOR_LINE_NUMBER)
+            .layout_no_wrap(widest, self.font_id.clone(), t.editor_line_number)
             .size()
             .x;
         text_w + EDITOR_GUTTER_PAD_LEFT + EDITOR_GUTTER_PAD_RIGHT
@@ -52,7 +50,8 @@ impl EditorMetrics {
 
 /// 只读 hosts 预览（对齐 `HostsViewer`）。
 pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
-    let bg = EDITOR_READONLY_BG;
+    let t = theme::app(ui.ctx());
+    let bg = t.editor_readonly_bg;
     let full_rect = ui.max_rect();
     ui.painter().rect_filled(full_rect, 0.0, bg);
 
@@ -114,10 +113,11 @@ pub fn draw_editor_panel(
 ) {
     let node = selected_id.and_then(|id| find_node(&manifest.root, id));
     let read_only = is_editor_read_only(selected_id, node.as_ref());
+    let t = theme::app(ui.ctx());
     let bg = if read_only {
-        EDITOR_READONLY_BG
+        t.editor_readonly_bg
     } else {
-        EDITOR_BG
+        t.editor_bg
     };
 
     let full_rect = ui.max_rect();
@@ -128,7 +128,7 @@ pub fn draw_editor_panel(
             ui.centered_and_justified(|ui| {
                 ui.label(
                     RichText::new("系统 Hosts 或方案")
-                        .color(Color32::from_rgb(140, 140, 150)),
+                        .color(theme::app(ui.ctx()).weak_text),
                 );
             });
         });
@@ -217,12 +217,13 @@ fn draw_gutter(
             },
         );
         if ui.is_rect_visible(line_rect) {
+            let t = theme::app(ui.ctx());
             ui.painter().text(
                 egui::pos2(gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT, line_rect.center().y),
                 egui::Align2::RIGHT_CENTER,
                 format!("{}", line_idx + 1),
                 metrics.font_id.clone(),
-                EDITOR_LINE_NUMBER,
+                t.editor_line_number,
             );
         }
         if !read_only && response.clicked() {
@@ -354,10 +355,11 @@ fn cursor_char_range(range: &egui::text::CursorRange) -> (usize, usize) {
 
 fn hosts_syntax_layouter(ui: &Ui, text: &str, wrap_width: f32) -> std::sync::Arc<egui::Galley> {
     let metrics = EditorMetrics::from_ui(ui);
-    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, wrap_width, &metrics)))
+    let t = theme::app(ui.ctx());
+    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, wrap_width, &metrics, &t)))
 }
 
-fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics) -> LayoutJob {
+fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics, t: &theme::AppTheme) -> LayoutJob {
     let font_id = metrics.font_id.clone();
     let row_height = metrics.row_height;
     let mut job = LayoutJob::default();
@@ -370,26 +372,26 @@ fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics) -> Lay
                 job.append(
                     "\n",
                     0.0,
-                    line_format(font_id.clone(), EDITOR_TEXT, row_height),
+                    line_format(font_id.clone(), t.editor_text, row_height),
                 );
             }
             continue;
         }
 
         if is_hosts_comment_line(body) {
-            append_line_text(&mut job, body, EDITOR_COMMENT, &font_id, row_height);
+            append_line_text(&mut job, body, t.editor_comment, &font_id, row_height);
         } else if !is_valid_hosts_line(body) {
-            append_line_text(&mut job, body, EDITOR_ERROR, &font_id, row_height);
+            append_line_text(&mut job, body, t.editor_error, &font_id, row_height);
         } else {
             for (i, seg) in parse_line_segments(body).iter().enumerate() {
                 if i > 0 {
                     job.append(
                         " ",
                         0.0,
-                        line_format(font_id.clone(), EDITOR_TEXT, row_height),
+                        line_format(font_id.clone(), t.editor_text, row_height),
                     );
                 }
-                let (color, seg_font) = token_style(seg.kind, &font_id);
+                let (color, seg_font) = token_style(seg.kind, &font_id, t);
                 job.append(
                     &seg.text,
                     0.0,
@@ -402,7 +404,7 @@ fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics) -> Lay
             job.append(
                 "\n",
                 0.0,
-                line_format(font_id.clone(), EDITOR_TEXT, row_height),
+                line_format(font_id.clone(), t.editor_text, row_height),
             );
         }
     }
@@ -431,12 +433,12 @@ fn append_line_text(
     );
 }
 
-fn token_style(kind: TokenKind, base: &FontId) -> (Color32, FontId) {
+fn token_style(kind: TokenKind, base: &FontId, t: &theme::AppTheme) -> (Color32, FontId) {
     match kind {
-        TokenKind::Comment => (EDITOR_COMMENT, base.clone()),
-        TokenKind::Ip => (EDITOR_IP, base.clone()),
-        TokenKind::Hostname => (EDITOR_TEXT, base.clone()),
-        TokenKind::Error => (EDITOR_ERROR, base.clone()),
-        TokenKind::Plain => (EDITOR_TEXT, base.clone()),
+        TokenKind::Comment => (t.editor_comment, base.clone()),
+        TokenKind::Ip => (t.editor_ip, base.clone()),
+        TokenKind::Hostname => (t.editor_text, base.clone()),
+        TokenKind::Error => (t.editor_error, base.clone()),
+        TokenKind::Plain => (t.editor_text, base.clone()),
     }
 }

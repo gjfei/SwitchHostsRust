@@ -11,11 +11,7 @@ use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::widgets::{ellipsize_text, toggle_switch_at};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    ACCENT, SIDEBAR_BG, SWITCH_HEIGHT, SWITCH_WIDTH, TREE_FONT_SIZE, TREE_INDENT,
-    TREE_INDENT_PAD, TREE_ROW_GAP, TREE_ROW_HEIGHT, TREE_ROW_RADIUS, TREE_STATUS_GAP,
-    TREE_STATUS_RIGHT, TREE_HOVER, TREE_TEXT, TREE_TEXT_SELECTED,
-};
+use crate::theme::{self, layout};
 
 const ROW_ICON: f32 = 16.0;
 const TREE_EDIT_SIZE: f32 = 20.0;
@@ -41,6 +37,7 @@ pub fn draw_hosts_tree(
     selected_id: &mut Option<String>,
     config: &AppConfig,
 ) -> TreeEvent {
+    let t = theme::app(ui.ctx());
     let mut event = TreeEvent::None;
     let mut pending_toggle_id = None;
 
@@ -56,8 +53,8 @@ pub fn draw_hosts_tree(
                 }
             });
 
-            ui.spacing_mut().item_spacing.y = TREE_ROW_GAP;
-            if draw_system_row(ui, selected_id, &mut event) {
+            ui.spacing_mut().item_spacing.y = layout::TREE_ROW_GAP;
+            if draw_system_row(ui, selected_id, &mut event, &t) {
                 // system selected
             }
             for node in manifest.root.iter_mut() {
@@ -74,6 +71,7 @@ pub fn draw_hosts_tree(
                     &mut pending_toggle_id,
                     config,
                     0,
+                    &t,
                 );
             }
         });
@@ -86,7 +84,12 @@ pub fn draw_hosts_tree(
     event
 }
 
-fn draw_system_row(ui: &mut Ui, selected_id: &mut Option<String>, event: &mut TreeEvent) -> bool {
+fn draw_system_row(
+    ui: &mut Ui,
+    selected_id: &mut Option<String>,
+    event: &mut TreeEvent,
+    t: &theme::AppTheme,
+) -> bool {
     let mut system = json!({
         "id": SYSTEM_NODE_ID,
         "title": "System Hosts",
@@ -103,6 +106,7 @@ fn draw_system_row(ui: &mut Ui, selected_id: &mut Option<String>, event: &mut Tr
         false,
         0,
         true,
+        t,
     );
     selected_id.as_deref() == Some(SYSTEM_NODE_ID)
 }
@@ -115,6 +119,7 @@ fn render_node(
     pending_toggle_id: &mut Option<String>,
     config: &AppConfig,
     depth: usize,
+    t: &theme::AppTheme,
 ) {
     let id = node
         .get("id")
@@ -141,6 +146,7 @@ fn render_node(
         is_folder,
         depth,
         false,
+        t,
     );
 
     if is_folder && !collapsed {
@@ -158,6 +164,7 @@ fn render_node(
                     pending_toggle_id,
                     config,
                     depth + 1,
+                    t,
                 );
             }
         }
@@ -173,6 +180,7 @@ fn render_row(
     is_folder: bool,
     depth: usize,
     is_system: bool,
+    t: &theme::AppTheme,
 ) {
     let id = node
         .get("id")
@@ -192,9 +200,9 @@ fn render_row(
     let is_selected = selected_id.as_deref() == Some(id.as_str());
     let is_remote = node.get("type").and_then(|v| v.as_str()) == Some("remote");
 
-    let indent = depth as f32 * TREE_INDENT + TREE_INDENT_PAD;
+    let indent = depth as f32 * layout::TREE_INDENT + layout::TREE_INDENT_PAD;
     let row_width = ui.available_width();
-    let response = ui.allocate_response(Vec2::new(row_width, TREE_ROW_HEIGHT), Sense::click());
+    let response = ui.allocate_response(Vec2::new(row_width, layout::TREE_ROW_HEIGHT), Sense::click());
     let rect = response.rect;
 
     let mut switch_clicked = false;
@@ -202,20 +210,20 @@ fn render_row(
 
     if ui.is_rect_visible(rect) {
         let row_bg = if is_selected {
-            Some(ACCENT)
+            Some(t.accent)
         } else if response.hovered() {
-            Some(TREE_HOVER)
+            Some(t.tree_hover)
         } else {
             None
         };
         if let Some(bg) = row_bg {
-            ui.painter().rect_filled(rect, TREE_ROW_RADIUS, bg);
+            ui.painter().rect_filled(rect, layout::TREE_ROW_RADIUS, bg);
         }
 
         let text_color = if is_selected {
-            TREE_TEXT_SELECTED
+            t.text_selected
         } else {
-            TREE_TEXT
+            t.text
         };
 
         let mut x = rect.left() + indent;
@@ -261,11 +269,11 @@ fn render_row(
         );
         x += 20.0;
 
-        let switch_left = rect.right() - TREE_STATUS_RIGHT - SWITCH_WIDTH;
+        let switch_left = rect.right() - layout::TREE_STATUS_RIGHT - layout::SWITCH_WIDTH;
         let title_right = if is_system {
             rect.right()
         } else if is_selected {
-            switch_left - TREE_STATUS_GAP - TREE_EDIT_SIZE - TREE_TITLE_GAP
+            switch_left - layout::TREE_STATUS_GAP - TREE_EDIT_SIZE - TREE_TITLE_GAP
         } else {
             switch_left - TREE_TITLE_GAP
         };
@@ -273,7 +281,7 @@ fn render_row(
             egui::pos2(x, rect.top()),
             egui::pos2(title_right.max(x), rect.bottom()),
         );
-        let font_id = ui_font_id(TREE_FONT_SIZE);
+        let font_id = ui_font_id(layout::TREE_FONT_SIZE);
         let display_title = ellipsize_text(ui, &title, font_id.clone(), title_rect.width());
         let galley = text_align::layout_vcentered_galley(
             ui,
@@ -287,7 +295,7 @@ fn render_row(
         if !is_system {
             if is_selected {
                 let edit_size = TREE_EDIT_SIZE;
-                let edit_left = switch_left - TREE_STATUS_GAP - edit_size;
+                let edit_left = switch_left - layout::TREE_STATUS_GAP - edit_size;
                 let edit_rect = egui::Rect::from_min_size(
                     egui::pos2(edit_left, cy - edit_size * 0.5),
                     Vec2::new(edit_size, edit_size),
@@ -307,8 +315,8 @@ fn render_row(
             }
 
             let switch_rect = egui::Rect::from_min_size(
-                egui::pos2(switch_left, cy - SWITCH_HEIGHT * 0.5),
-                Vec2::new(SWITCH_WIDTH, SWITCH_HEIGHT),
+                egui::pos2(switch_left, cy - layout::SWITCH_HEIGHT * 0.5),
+                Vec2::new(layout::SWITCH_WIDTH, layout::SWITCH_HEIGHT),
             );
             let switch_resp = toggle_switch_at(
                 ui,
@@ -372,8 +380,9 @@ pub fn draw_hosts_sidebar(
     selected_id: &mut Option<String>,
     config: &AppConfig,
 ) -> TreeEvent {
+    let t = theme::app(ui.ctx());
     egui::Frame::new()
-        .fill(SIDEBAR_BG)
+        .fill(t.sidebar_bg)
         .inner_margin(egui::Margin::symmetric(10, 5))
         .show(ui, |ui| draw_hosts_tree(ui, manifest, selected_id, config))
         .inner

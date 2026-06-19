@@ -17,17 +17,12 @@ use crate::segmented::{
     paint_segment_icon_text, paint_segment_text, segmented_control,
 };
 use crate::panels::drawer::{
-    drawer_frame, drawer_select, drawer_select_option, draw_drawer_header, outline_button,
+    drawer_panel_frame, drawer_select, drawer_select_option, draw_drawer_header, outline_button,
     outline_button_with_icon, primary_button, side_drawer_geometry, backdrop_dismiss_clicked,
-    paint_side_drawer_backdrop, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT, DRAWER_INPUT_TEXT,
-    DRAWER_SHADOW,
+    paint_side_drawer_backdrop, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT,
 };
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{
-    ACCENT, DRAWER_BORDER, DRAWER_FOOTER_HEIGHT, DRAWER_INPUT_BORDER, DRAWER_INPUT_RADIUS,
-    DRAWER_LABEL_GAP, DRAWER_PAD, DRAWER_SECTION_GAP, DRAWER_WEAK_TEXT,
-    DRAWER_WIDTH, TOP_BAR_ICON_HOVER, TOP_BAR_ICON_RADIUS,
-};
+use crate::theme::{self, layout};
 
 const TITLE_MAX_LEN: usize = 50;
 const TRANSFER_LIST_H: f32 = 200.0;
@@ -121,7 +116,7 @@ pub fn draw_edit_hosts_drawer(
     let is_add = state.is_add();
     let allow_backdrop_dismiss = state.open_last_frame;
 
-    let geom = side_drawer_geometry(ctx, DRAWER_WIDTH);
+    let geom = side_drawer_geometry(ctx, layout::DRAWER_WIDTH);
     paint_side_drawer_backdrop(ctx, "edit_hosts_backdrop", geom.backdrop_rect);
     if allow_backdrop_dismiss
         && backdrop_dismiss_clicked(ctx, geom.backdrop_rect, geom.drawer_rect, true)
@@ -137,9 +132,8 @@ pub fn draw_edit_hosts_drawer(
             ui.set_min_size(geom.area_rect.size());
             ui.set_max_size(geom.area_rect.size());
 
-            drawer_frame()
+            drawer_panel_frame(ctx)
                 .outer_margin(geom.shadow_margin)
-                .shadow(DRAWER_SHADOW)
                 .show(ui, |ui| {
                     ui.set_width(geom.drawer_rect.width());
                     ui.set_height(geom.drawer_rect.height());
@@ -151,23 +145,23 @@ pub fn draw_edit_hosts_drawer(
                             result = EditHostsResult::Cancelled;
                         }
 
-                        let body_h = ui.available_height() - DRAWER_FOOTER_HEIGHT;
+                        let body_h = ui.available_height() - layout::DRAWER_FOOTER_HEIGHT;
                         let body_rect = egui::Rect::from_min_size(
                             ui.cursor().min,
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
                         ui.painter()
-                            .rect_filled(body_rect, 0.0, Color32::WHITE);
+                            .rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
                         ScrollArea::vertical()
                             .id_salt("edit_hosts_drawer_body")
                             .auto_shrink([false; 2])
                             .max_height(body_h.max(0.0))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.add_space(DRAWER_PAD);
+                                    ui.add_space(layout::DRAWER_PAD);
                                     ui.vertical(|ui| {
-                                        ui.set_width(DRAWER_WIDTH - DRAWER_PAD * 2.0);
-                                        ui.add_space(DRAWER_PAD);
+                                        ui.set_width(layout::DRAWER_WIDTH - layout::DRAWER_PAD * 2.0);
+                                        ui.add_space(layout::DRAWER_PAD);
                                         form_section(ui, "Hosts 类型", |ui| {
                                             draw_kind_segmented(ui, &mut state.draft.kind, is_add);
                                         });
@@ -221,14 +215,14 @@ fn draw_drawer_footer(
     result: &mut EditHostsResult,
 ) {
     let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, DRAWER_FOOTER_HEIGHT), Sense::hover());
-    let half = (rect.width() - DRAWER_PAD * 2.0) * 0.5;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
+    let half = (rect.width() - layout::DRAWER_PAD * 2.0) * 0.5;
     let left = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + DRAWER_PAD, rect.top() + 16.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD, rect.top() + 16.0),
         Vec2::new(half, 36.0),
     );
     let right = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + DRAWER_PAD + half, rect.top() + 16.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD + half, rect.top() + 16.0),
         Vec2::new(half, 36.0),
     );
 
@@ -265,10 +259,11 @@ fn draw_drawer_footer(
 fn form_section(ui: &mut Ui, label: &str, body: impl FnOnce(&mut Ui)) {
     form_label(ui, label);
     body(ui);
-    ui.add_space(DRAWER_SECTION_GAP);
+    ui.add_space(layout::DRAWER_SECTION_GAP);
 }
 
 fn form_label(ui: &mut Ui, label: &str) {
+    let t = theme::app(ui.ctx());
     let size = 14.0;
     let line_h = ICON_ROW_LINE_HEIGHT;
     let row_h = line_h + 4.0;
@@ -278,26 +273,27 @@ fn form_label(ui: &mut Ui, label: &str) {
         ui,
         label.to_owned(),
         ui_font_id(size),
-        DRAWER_INPUT_TEXT,
+        t.text,
         line_h,
     );
-    text_align::paint_galley_row_centered(ui, rect.left(), rect.center().y, galley, DRAWER_INPUT_TEXT);
-    ui.add_space(DRAWER_LABEL_GAP);
+    text_align::paint_galley_row_centered(ui, rect.left(), rect.center().y, galley, t.text);
+    ui.add_space(layout::DRAWER_LABEL_GAP);
 }
 
 /// Mantine `Button variant="subtle" size="sm"`。
 fn drawer_subtle_button(ui: &mut Ui, label: &str, enabled: bool) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let text_color = if enabled {
-        Color32::from_rgb(60, 60, 70)
+        t.text
     } else {
-        DRAWER_WEAK_TEXT
+        t.weak_text
     };
     ui.add_enabled(
         enabled,
         egui::Button::new(RichText::new(label).size(14.0).color(text_color))
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::NONE)
-            .corner_radius(DRAWER_INPUT_RADIUS)
+            .corner_radius(t.corner_input())
             .min_size(Vec2::new(0.0, 28.0)),
     )
 }
@@ -309,6 +305,7 @@ fn drawer_text_input(
     stroke: Stroke,
     hint: Option<&str>,
 ) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let font_id = ui_font_id(14.0);
     let stroke_inset = stroke.width.max(1.0);
     let w = ui.available_width();
@@ -317,8 +314,8 @@ fn drawer_text_input(
         ui.allocate_exact_size(Vec2::new(w, DRAWER_INPUT_HEIGHT), Sense::hover());
     ui.painter().rect(
         row_rect,
-        DRAWER_INPUT_RADIUS,
-        Color32::WHITE,
+        t.corner_input(),
+        t.editor_bg,
         stroke,
         egui::StrokeKind::Inside,
     );
@@ -358,14 +355,15 @@ fn draw_title_field(
     }
 
     let id = ui.id().with("hosts_title");
+    let t = theme::app(ui.ctx());
     let is_error = *title_error && title.trim().is_empty();
     let will_focus = *focus_title || ui.memory(|m| m.has_focus(id));
     let stroke = Stroke::new(
         if is_error { 1.5 } else { 1.0 },
         if is_error || will_focus {
-            ACCENT
+            t.accent
         } else {
-            DRAWER_INPUT_BORDER
+            t.input_border
         },
     );
     let response = drawer_text_input(ui, title, id, stroke, None);
@@ -412,11 +410,12 @@ fn draw_remote_fields(
     is_add: bool,
 ) {
     form_section(ui, "URL", |ui| {
+        let t = theme::app(ui.ctx());
         drawer_text_input(
             ui,
             &mut state.draft.url,
             ui.id().with("hosts_url"),
-            Stroke::new(1.0, DRAWER_INPUT_BORDER),
+            Stroke::new(1.0, t.input_border),
             Some("http:// 或 https:// 或 file://"),
         );
     });
@@ -446,7 +445,7 @@ fn draw_remote_fields(
                 ui.label(
                     RichText::new(format!("最后刷新：{last}"))
                         .size(14.0)
-                        .color(DRAWER_WEAK_TEXT),
+                        .color(theme::app(ui.ctx()).weak_text),
                 );
                 let refresh_enabled = state.draft.id.is_some();
                 if drawer_subtle_button(ui, "刷新", refresh_enabled).clicked() {
@@ -474,7 +473,7 @@ fn draw_group_transfer(ui: &mut Ui, state: &mut EditHostsState, manifest: &Manif
         if candidates.is_empty() {
             ui.label(
                 RichText::new("暂无 local/remote 方案可选")
-                    .color(DRAWER_WEAK_TEXT),
+                    .color(theme::app(ui.ctx()).weak_text),
             );
             return;
         }
@@ -563,6 +562,7 @@ fn transfer_column(
     candidates: &[(String, String, HostsNodeKind)],
     selected: &mut Vec<String>,
 ) {
+    let t = theme::app(ui.ctx());
     let col_h = TRANSFER_LIST_H + 28.0;
     ui.allocate_ui_with_layout(
         Vec2::new(width, col_h),
@@ -571,8 +571,8 @@ fn transfer_column(
             ui.set_width(width);
             ui.push_id(id, |ui| {
                 egui::Frame::new()
-                    .stroke(Stroke::new(1.0, DRAWER_BORDER))
-                    .corner_radius(DRAWER_INPUT_RADIUS)
+                    .stroke(Stroke::new(1.0, t.border))
+                    .corner_radius(t.corner_input())
                     .show(ui, |ui| {
                         ui.set_width(width);
                         let header_h = 28.0;
@@ -585,7 +585,7 @@ fn transfer_column(
                                 egui::pos2(header_rect.left(), header_rect.bottom()),
                                 egui::pos2(header_rect.right(), header_rect.bottom()),
                             ],
-                            Stroke::new(1.0, DRAWER_BORDER),
+                            Stroke::new(1.0, t.border),
                         );
                         let count_label = if selected.is_empty() {
                             ids.len().to_string()
@@ -597,7 +597,7 @@ fn transfer_column(
                             ui,
                             header_label,
                             ui_font_id(14.0),
-                            Color32::BLACK,
+                            t.text,
                             ICON_ROW_LINE_HEIGHT,
                         );
                         text_align::paint_galley_row_centered(
@@ -605,7 +605,7 @@ fn transfer_column(
                             header_rect.left() + 12.0,
                             header_rect.center().y,
                             header_galley,
-                            Color32::BLACK,
+                            t.text,
                         );
 
                         ScrollArea::vertical()
@@ -631,13 +631,13 @@ fn transfer_column(
                                             Sense::click(),
                                         );
                                         if is_sel {
-                                            ui.painter().rect_filled(rect, 4.0, ACCENT);
+                                            ui.painter().rect_filled(rect, 4.0, t.accent);
                                         }
                                         let cy = rect.center().y;
                                         let row_color = if is_sel {
-                                            Color32::WHITE
+                                            t.text_selected
                                         } else {
-                                            Color32::from_rgb(60, 60, 70)
+                                            t.text
                                         };
                                         text_align::paint_icon_text_row(
                                             ui,
@@ -692,6 +692,7 @@ fn transfer_arrows(
 }
 
 fn transfer_arrow_btn(ui: &mut Ui, icon: Icon, enabled: bool) -> egui::Response {
+    let t = theme::app(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(
         Vec2::splat(28.0),
         if enabled { Sense::click() } else { Sense::hover() },
@@ -699,12 +700,12 @@ fn transfer_arrow_btn(ui: &mut Ui, icon: Icon, enabled: bool) -> egui::Response 
     if ui.is_rect_visible(rect) {
         if resp.hovered() && enabled {
             ui.painter()
-                .rect_filled(rect, TOP_BAR_ICON_RADIUS, TOP_BAR_ICON_HOVER);
+                .rect_filled(rect, t.corner_icon(), t.icon_hover_bg);
         }
         let tint = if enabled {
-            Color32::from_rgb(60, 60, 70)
+            t.text
         } else {
-            Color32::from_rgb(200, 200, 205)
+            t.weak_text
         };
         icons::paint_icon(ui, icon, rect.center(), 16.0, tint);
     }
@@ -729,7 +730,7 @@ fn draw_folder_fields(ui: &mut Ui, folder_mode: &mut u8) {
         ui.label(
             RichText::new(folder_mode_hint(*folder_mode))
                 .size(12.0)
-                .color(DRAWER_WEAK_TEXT),
+                .color(theme::app(ui.ctx()).weak_text),
         );
     });
 }
