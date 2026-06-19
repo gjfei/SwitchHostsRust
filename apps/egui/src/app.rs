@@ -1,0 +1,145 @@
+use switch_hosts_core::hosts_apply::elevation::SystemElevation;
+use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
+use switch_hosts_core::hosts_apply::target::HostsTarget;
+use switch_hosts_core::storage::config::AppConfig;
+use switch_hosts_core::storage::entries;
+use switch_hosts_core::storage::manifest::{find_node, Manifest};
+use switch_hosts_core::storage::paths::AppPaths;
+use switch_hosts_core::toggle::toggle_item;
+use eframe::egui;
+
+use crate::panels::{draw_activity_bar, draw_details, draw_editor, draw_tree};
+
+pub struct SwitchHostsApp {
+    paths: AppPaths,
+    target: HostsTarget,
+    config: AppConfig,
+    manifest: Manifest,
+    selected_id: Option<String>,
+    editor_text: String,
+    view_trash: bool,
+    test_mode: bool,
+}
+
+impl SwitchHostsApp {
+    pub fn new(_cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
+        let config = AppConfig::load(&paths.config_file);
+        let manifest = Manifest::load(&paths).unwrap_or_default();
+        let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
+        Self {
+            paths,
+            target,
+            config,
+            manifest,
+            selected_id: None,
+            editor_text: String::new(),
+            view_trash: false,
+            test_mode,
+        }
+    }
+
+    fn reload_editor(&mut self) {
+        if let Some(id) = &self.selected_id {
+            self.editor_text = entries::read_entry(&self.paths.entries_dir, id).unwrap_or_default();
+        } else {
+            self.editor_text.clear();
+        }
+    }
+
+    fn save_editor(&mut self) {
+        if let Some(id) = &self.selected_id.clone() {
+            let _ = entries::write_entry(&self.paths.entries_dir, id, &self.editor_text);
+        }
+    }
+
+    fn apply_hosts(&mut self) {
+        let elevation = SystemElevation;
+        let pipeline = ApplyPipeline {
+            paths: &self.paths,
+            config: &self.config,
+            elevation: &elevation,
+        };
+        let _ = pipeline.apply(&self.manifest, &self.target);
+    }
+}
+
+impl eframe::App for SwitchHostsApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.test_mode {
+            egui::TopBottomPanel::top("test_banner").show(ctx, |ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(200, 120, 0),
+                    "测试模式 — 写入 dev test.hosts，非系统 /etc/hosts",
+                );
+            });
+        }
+
+        draw_activity_bar(ctx, &mut self.view_trash);
+
+        egui::SidePanel::left("tree_panel")
+            .default_width(self.config.left_panel_width as f32)
+            .show(ctx, |ui| {
+                if draw_tree(ui, &mut self.manifest, &mut self.selected_id, &self.config) {
+                    self.reload_editor();
+                }
+            });
+
+        if self.config.right_panel_show {
+            egui::SidePanel::right("details_panel")
+                .default_width(self.config.right_panel_width as f32)
+                .show(ctx, |ui| {
+                    draw_details(ui, &self.manifest, self.selected_id.as_deref());
+                });
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Apply").clicked() {
+                    self.save_editor();
+                    self.apply_hosts();
+                }
+                if ui.button("Save entry").clicked() {
+                    self.save_editor();
+                    let _ = self.manifest.save(&self.paths);
+                }
+            });
+            draw_editor(ui, &mut self.editor_text, self.selected_id.as_deref());
+        });
+    }
+}
+
+/// 从 manifest 构建托盘菜单标签（单元测试用，无需原生托盘 API）。
+pub fn tray_menu_labels(manifest: &Manifest) -> Vec<String> {
+    manifest
+        .root
+        .iter()
+        .filter_map(|n| {
+            let title = n.get("title").and_then(|v| v.as_str())?;
+            let on = n.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+            Some(format!("{} {}", if on { "✓" } else { " " }, title))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn tray_labels_show_checkmarks() {
+        let manifest = Manifest {
+            root: json!([
+                { "title": "A", "on": true },
+                { "title": "B", "on": false }
+            ])
+            .as_array()
+            .cloned()
+            .unwrap(),
+            ..Default::default()
+        };
+        let labels = tray_menu_labels(&manifest);
+        assert!(labels[0].starts_with('✓'));
+        assert!(labels[1].starts_with(' '));
+    }
+}
