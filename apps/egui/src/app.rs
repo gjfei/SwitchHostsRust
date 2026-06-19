@@ -8,7 +8,9 @@ use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::Trashcan;
 use eframe::egui;
 
-use crate::panels::{draw_activity_bar, draw_details, draw_editor, draw_trash, draw_tree};
+use crate::panels::{
+    draw_activity_bar, draw_details, draw_editor, draw_preferences, draw_trash, draw_tree,
+};
 
 pub struct SwitchHostsApp {
     paths: AppPaths,
@@ -21,6 +23,7 @@ pub struct SwitchHostsApp {
     view_trash: bool,
     test_mode: bool,
     status_message: Option<String>,
+    show_preferences: bool,
 }
 
 impl SwitchHostsApp {
@@ -40,6 +43,7 @@ impl SwitchHostsApp {
             view_trash: false,
             test_mode,
             status_message: None,
+            show_preferences: false,
         }
     }
 
@@ -80,6 +84,19 @@ impl eframe::App for SwitchHostsApp {
         }
 
         draw_activity_bar(ctx, &mut self.view_trash);
+
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("偏好设置").clicked() {
+                    self.show_preferences = true;
+                }
+            });
+        });
+
+        if draw_preferences(ctx, &mut self.show_preferences, &mut self.config) {
+            let _ = self.config.save(&self.paths.config_file);
+            self.status_message = Some("偏好设置已保存".into());
+        }
 
         egui::SidePanel::left("tree_panel")
             .default_width(self.config.left_panel_width as f32)
