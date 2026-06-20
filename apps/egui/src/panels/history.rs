@@ -13,7 +13,10 @@ use crate::panels::drawer::{
     side_drawer_geometry, ConfirmModalResult, DRAWER_BTN_H,
 };
 use crate::panels::editor::draw_readonly_hosts_viewer;
-use crate::panels::status_bar::{draw_status_bar, draw_panel_status_spacer, EditorStatus, pin_body_and_status_bar};
+use crate::panels::status_bar::{
+    draw_panel_status_spacer_with_corners, draw_status_bar_with_corners, EditorStatus,
+    pin_body_and_status_bar,
+};
 use crate::panels::widgets::format_bytes;
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{self, layout};
@@ -21,6 +24,20 @@ use crate::theme::{self, layout};
 const HISTORY_LIST_WIDTH: f32 = 200.0;
 /// 对齐 `History.tsx` 面板 `borderRadius: 6`
 const HISTORY_PANEL_RADIUS: CornerRadius = CornerRadius::same(6);
+/// 预览区主体：仅顶部圆角（底部接 status bar）。
+const HISTORY_BODY_RADIUS: CornerRadius = CornerRadius {
+    nw: 6,
+    ne: 6,
+    sw: 0,
+    se: 0,
+};
+/// status bar / 底部占位：仅底部圆角。
+const HISTORY_STATUS_RADIUS: CornerRadius = CornerRadius {
+    nw: 0,
+    ne: 0,
+    sw: 6,
+    se: 6,
+};
 /// 对齐 `History.tsx` 预览与列表间距 `marginRight: 12`
 const HISTORY_PANEL_GAP: f32 = 12.0;
 const HISTORY_ITEM_PAD_X: f32 = 12.0;
@@ -247,34 +264,50 @@ fn draw_history_body(ui: &mut Ui, drawer_w: f32, panel_h: f32, state: &mut Histo
     });
 }
 
-/// 对齐 `HostsViewer`：边框内 editor + StatusBar。
+/// 对齐 `HostsViewer`：边框内 editor + StatusBar（`overflow: hidden` + 分区圆角）。
 fn draw_history_viewer_panel(ui: &mut Ui, width: f32, height: f32, state: &mut HistoryState) {
     let t = theme::app(ui.ctx());
     egui::Frame::new()
+        .fill(Color32::TRANSPARENT)
         .stroke(Stroke::new(1.0, t.separator))
         .corner_radius(HISTORY_PANEL_RADIUS)
-        .fill(t.editor_bg)
+        .inner_margin(egui::Margin::ZERO)
         .show(ui, |ui| {
             ui.set_min_size(Vec2::new(width, height));
             ui.set_max_size(Vec2::new(width, height));
 
             let status = viewer_status(&state.viewer_text);
+            let readonly_bg = t.editor_readonly_bg;
+
             pin_body_and_status_bar(
                 ui,
                 |ui| {
+                    let body = ui.max_rect();
+                    ui.painter()
+                        .rect_filled(body, HISTORY_BODY_RADIUS, readonly_bg);
                     if state.items.is_empty() {
-                        ui.centered_and_justified(|ui| {
-                            ui.label(
-                                RichText::new("暂无记录")
-                                    .size(16.0)
-                                    .color(t.weak_text),
-                            );
-                        });
+                        ui.scope_builder(
+                            egui::UiBuilder::new().max_rect(body),
+                            |ui| {
+                                ui.centered_and_justified(|ui| {
+                                    ui.label(
+                                        RichText::new("暂无记录")
+                                            .size(16.0)
+                                            .color(t.weak_text),
+                                    );
+                                });
+                            },
+                        );
                     } else {
-                        draw_readonly_hosts_viewer(ui, &mut state.viewer_text);
+                        ui.scope_builder(
+                            egui::UiBuilder::new().max_rect(body),
+                            |ui| {
+                                draw_readonly_hosts_viewer(ui, &mut state.viewer_text, false);
+                            },
+                        );
                     }
                 },
-                |ui| draw_status_bar(ui, &status),
+                |ui| draw_status_bar_with_corners(ui, &status, HISTORY_STATUS_RADIUS),
             );
         });
 }
@@ -294,9 +327,10 @@ fn viewer_status(text: &str) -> EditorStatus {
 fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut HistoryState) {
     let t = theme::app(ui.ctx());
     egui::Frame::new()
+        .fill(Color32::TRANSPARENT)
         .stroke(Stroke::new(1.0, t.separator))
         .corner_radius(HISTORY_PANEL_RADIUS)
-        .fill(t.editor_bg)
+        .inner_margin(egui::Margin::ZERO)
         .show(ui, |ui| {
             ui.set_min_size(Vec2::new(width, height));
             ui.set_max_size(Vec2::new(width, height));
@@ -304,8 +338,12 @@ fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut His
             pin_body_and_status_bar(
                 ui,
                 |ui| {
+                    let body = ui.max_rect();
+                    ui.painter()
+                        .rect_filled(body, HISTORY_BODY_RADIUS, t.editor_bg);
+
                     let pad = HISTORY_LIST_INNER_PAD;
-                    let inner_rect = ui.max_rect().shrink2(Vec2::splat(pad));
+                    let inner_rect = body.shrink2(Vec2::splat(pad));
 
                     ui.scope_builder(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
                         if state.items.is_empty() {
@@ -339,7 +377,7 @@ fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut His
                             });
                     });
                 },
-                draw_panel_status_spacer,
+                |ui| draw_panel_status_spacer_with_corners(ui, HISTORY_STATUS_RADIUS),
             );
         });
 }

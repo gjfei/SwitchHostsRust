@@ -15,7 +15,8 @@ pub const APP_THEME_ID: Id = Id::NULL;
 pub mod layout {
     pub const TOP_BAR_HEIGHT: f32 = 40.0;
     pub const TEST_BANNER_HEIGHT: f32 = 24.0;
-    pub const STATUS_BAR_HEIGHT: f32 = 22.0;
+    pub const STATUS_BAR_HEIGHT: f32 = 28.0;
+    pub const STATUS_BAR_PAD_X: f32 = 10.0;
     pub const TOP_BAR_PAD_X: f32 = 10.0;
     pub const TOP_BAR_MAC_PAD_LEFT: f32 = 88.0;
     pub const TOP_BAR_TRAFFIC_LIGHT_X: f32 = 12.0;
@@ -331,6 +332,7 @@ fn build_visuals(t: &AppTheme) -> egui::Visuals {
     visuals.extreme_bg_color = t.window_bg;
     visuals.faint_bg_color = t.window_bg;
     visuals.code_bg_color = t.editor_readonly_bg;
+    visuals.text_edit_bg_color = Some(t.editor_bg);
 
     let corner_sm = CornerRadius::same(layout::CHECKBOX_RADIUS as u8);
 
@@ -344,7 +346,7 @@ fn build_visuals(t: &AppTheme) -> egui::Visuals {
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, t.text);
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, t.input_border);
     visuals.widgets.inactive.weak_bg_fill = t.segmented_bg;
-    visuals.widgets.inactive.corner_radius = corner_sm;
+    visuals.widgets.inactive.corner_radius = t.corner_input();
 
     visuals.widgets.hovered.bg_fill = t.hover_bg;
     // SidePanel / 窗口拖拽分隔线在 hover 时使用 fg_stroke（对齐 SwitchHosts 红色 resize 提示）
@@ -362,11 +364,8 @@ fn build_visuals(t: &AppTheme) -> egui::Visuals {
     visuals.widgets.open.weak_bg_fill = t.segmented_bg;
 
     visuals.selection.bg_fill = t.editor_selection_bg;
-    visuals.selection.stroke = if t.dark {
-        Stroke::new(1.0, Color32::from_rgb(120, 170, 220))
-    } else {
-        Stroke::new(1.0, Color32::from_rgb(0, 83, 125))
-    };
+    // stroke.color 用于选区文字着色；与正文同色则选中时仅背景高亮、文字不变色
+    visuals.selection.stroke = Stroke::new(1.0, t.text);
 
     visuals.hyperlink_color = t.accent;
     visuals.warn_fg_color = t.find_error;

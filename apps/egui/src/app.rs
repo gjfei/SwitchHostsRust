@@ -10,7 +10,7 @@ use switch_hosts_core::storage::manifest::{collect_content_ids, find_node, Manif
 use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
-use eframe::egui::{self, Vec2};
+use eframe::egui;
 use raw_window_handle::HasWindowHandle;
 
 use crate::config_effects::apply_config_side_effects;
@@ -25,6 +25,7 @@ use crate::panels::{
     draw_hosts_sidebar,
     paint_list_panel_border,
     draw_navigation, draw_panel_status_spacer, draw_preferences_drawer, draw_top_bar,
+    pin_body_and_status_bar,
     draw_trash_clear_confirm,
     draw_trash_delete_confirm, draw_trash_panel, draw_import_from_url_modal, draw_import_error_modal,
     draw_apply_error_modal,
@@ -727,34 +728,29 @@ impl eframe::App for SwitchHostsApp {
                 .frame(egui::Frame::new().fill(t.sidebar_bg))
                 .show_inside(ui, |ui| {
                     paint_list_panel_border(ui);
-                    ui.vertical(|ui| {
-                        let body_h =
-                            (ui.available_height() - layout::STATUS_BAR_HEIGHT).max(0.0);
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(ui.available_width(), body_h),
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| match self.nav_view {
-                                NavView::Hosts => {
-                                    let event = draw_hosts_sidebar(
-                                        ui,
-                                        &mut self.manifest,
-                                        &mut self.selected_id,
-                                        &self.config,
-                                    );
-                                    self.on_tree_event(event);
-                                }
-                                NavView::Trash => {
-                                    let event = draw_trash_panel(
-                                        ui,
-                                        &self.trashcan,
-                                        &mut self.selected_id,
-                                    );
-                                    self.on_trash_event(event);
-                                }
-                            },
-                        );
-                        draw_panel_status_spacer(ui);
-                    });
+                    pin_body_and_status_bar(
+                        ui,
+                        |ui| match self.nav_view {
+                            NavView::Hosts => {
+                                let event = draw_hosts_sidebar(
+                                    ui,
+                                    &mut self.manifest,
+                                    &mut self.selected_id,
+                                    &self.config,
+                                );
+                                self.on_tree_event(event);
+                            }
+                            NavView::Trash => {
+                                let event = draw_trash_panel(
+                                    ui,
+                                    &self.trashcan,
+                                    &mut self.selected_id,
+                                );
+                                self.on_trash_event(event);
+                            }
+                        },
+                        draw_panel_status_spacer,
+                    );
                 });
         }
 
@@ -763,29 +759,22 @@ impl eframe::App for SwitchHostsApp {
                 .default_size(self.config.right_panel_width as f32)
                 .frame(egui::Frame::new().fill(t.window_bg).inner_margin(0.0))
                 .show_inside(ui, |ui| {
-                    ui.vertical(|ui| {
-                        let body_h =
-                            (ui.available_height() - layout::STATUS_BAR_HEIGHT).max(0.0);
-                        let action = ui
-                            .allocate_ui_with_layout(
-                                Vec2::new(ui.available_width(), body_h),
-                                egui::Layout::top_down(egui::Align::LEFT),
-                                |ui| {
-                                    draw_details(
-                                        ui,
-                                        &self.manifest,
-                                        &self.trashcan,
-                                        self.nav_view,
-                                        self.selected_id.as_deref(),
-                                        &self.editor_text,
-                                        &self.target.path().display().to_string(),
-                                    )
-                                },
+                    let action = pin_body_and_status_bar(
+                        ui,
+                        |ui| {
+                            draw_details(
+                                ui,
+                                &self.manifest,
+                                &self.trashcan,
+                                self.nav_view,
+                                self.selected_id.as_deref(),
+                                &self.editor_text,
+                                &self.target.path().display().to_string(),
                             )
-                            .inner;
-                        self.on_details_action(action);
-                        draw_panel_status_spacer(ui);
-                    });
+                        },
+                        draw_panel_status_spacer,
+                    );
+                    self.on_details_action(action);
                 });
         }
 

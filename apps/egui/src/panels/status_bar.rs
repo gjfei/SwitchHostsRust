@@ -2,14 +2,15 @@
 
 use switch_hosts_core::manifest_edit::is_editor_read_only;
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
-use eframe::egui::{Sense, Stroke, Ui, Vec2};
+use eframe::egui::text::{LayoutJob, TextFormat};
+use eframe::egui::{Align, CornerRadius, Sense, Stroke, Ui};
 
 use crate::fonts::ui_font_id;
 use crate::panels::widgets::format_bytes;
-use crate::text_align;
 use crate::theme::{self, layout};
 
-const STATUS_TEXT_LINE_HEIGHT: f32 = 12.0;
+const STATUS_FONT_SIZE: f32 = 10.0;
+const STATUS_SEPARATOR_H: f32 = 1.0;
 
 pub struct EditorStatus {
     pub line_count: usize,
@@ -35,68 +36,93 @@ pub fn editor_status(
 }
 
 /// 将面板底部分配给 status bar，上方区域交给 `draw_body`（对齐 `HostsEditor` / `HostsViewer`）。
-pub fn pin_body_and_status_bar(
+pub fn pin_body_and_status_bar<R>(
     ui: &mut Ui,
-    draw_body: impl FnOnce(&mut Ui),
+    draw_body: impl FnOnce(&mut Ui) -> R,
     draw_status: impl FnOnce(&mut Ui),
-) {
-    let outer = ui.max_rect();
+) -> R {
+    let area = ui.max_rect().intersect(ui.clip_rect());
     let status_h = layout::STATUS_BAR_HEIGHT;
-    let body_rect = egui::Rect::from_min_max(
-        outer.min,
-        egui::pos2(outer.max.x, outer.max.y - status_h),
-    );
-    let status_rect = egui::Rect::from_min_max(
-        egui::pos2(outer.min.x, outer.max.y - status_h),
-        outer.max,
-    );
+    let status_top = (area.max.y - status_h).max(area.min.y);
+    let body_rect = egui::Rect::from_min_max(area.min, egui::pos2(area.max.x, status_top));
+    let status_rect = egui::Rect::from_min_max(egui::pos2(area.min.x, status_top), area.max);
 
-    ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), draw_body);
-    ui.scope_builder(egui::UiBuilder::new().max_rect(status_rect), draw_status);
-    ui.expand_to_include_rect(outer);
+    let body = ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(body_rect)
+            .id_salt("pinned_editor_body"),
+        draw_body,
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(status_rect)
+            .id_salt("pinned_editor_status"),
+        draw_status,
+    );
+    body.inner
 }
 
 /// 侧栏/列表面板底部占位（与编辑器 status bar 同高，背景对齐 `editor_bg`）。
 pub fn draw_panel_status_spacer(ui: &mut Ui) {
+    draw_panel_status_spacer_with_corners(ui, CornerRadius::ZERO);
+}
+
+pub fn draw_panel_status_spacer_with_corners(ui: &mut Ui, corner_radius: CornerRadius) {
     let t = theme::app(ui.ctx());
     let rect = ui.max_rect();
-    let size = Vec2::new(rect.width().max(ui.available_width()), layout::STATUS_BAR_HEIGHT);
-    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, t.editor_bg);
+    let _ = ui.allocate_rect(rect, Sense::hover());
+    ui.painter()
+        .rect_filled(rect, corner_radius, t.editor_bg);
 }
 
 pub fn draw_status_bar(ui: &mut Ui, status: &EditorStatus) {
+    draw_status_bar_with_corners(ui, status, CornerRadius::ZERO);
+}
+
+pub fn draw_status_bar_with_corners(
+    ui: &mut Ui,
+    status: &EditorStatus,
+    corner_radius: CornerRadius,
+) {
     let t = theme::app(ui.ctx());
     let rect = ui.max_rect();
-    ui.painter().rect_filled(rect, 0.0, t.editor_bg);
+    let _ = ui.allocate_rect(rect, Sense::hover());
+
+    ui.painter()
+        .rect_filled(rect, corner_radius, t.editor_bg);
     ui.painter()
         .hline(rect.x_range(), rect.top(), Stroke::new(1.0, t.separator));
 
-    let cy = rect.center().y;
-    let font = ui_font_id(10.0);
-    let mut x = rect.left() + 10.0;
-    let text_color = t.weak_text;
-
-    let main = format!("{} 行  {}", status.line_count, format_bytes(status.bytes));
-    let galley = text_align::layout_vcentered_galley(
-        ui,
-        main,
-        font.clone(),
-        text_color,
-        STATUS_TEXT_LINE_HEIGHT,
-    );
-    let main_w = galley.size().x;
-    text_align::paint_galley_row_centered(ui, x, cy, galley, text_color);
-    x += main_w;
-
+    let mut label = format!("{} 行  {}", status.line_count, format_bytes(status.bytes));
     if status.read_only && status.line_count > 0 {
-        let ro = text_align::layout_vcentered_galley(
-            ui,
-            " · 只读".to_string(),
-            font,
-            text_color,
-            STATUS_TEXT_LINE_HEIGHT,
-        );
-        text_align::paint_galley_row_centered(ui, x, cy, ro, text_color);
+        label.push_str(" · 只读");
     }
+
+    let text_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + layout::STATUS_BAR_PAD_X, rect.top() + STATUS_SEPARATOR_H),
+        egui::pos2(rect.right() - layout::STATUS_BAR_PAD_X, rect.bottom()),
+    );
+
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(text_rect)
+            .id_salt("status_text"),
+        |ui| {
+            let mut job = LayoutJob::single_section(
+                label,
+                TextFormat {
+                    font_id: ui_font_id(STATUS_FONT_SIZE),
+                    color: t.weak_text,
+                    valign: Align::Center,
+                    ..Default::default()
+                },
+            );
+            job.first_row_min_height = text_rect.height();
+            job.halign = Align::LEFT;
+
+            ui.with_layout(egui::Layout::top_down(Align::LEFT), |ui| {
+                ui.label(job);
+            });
+        },
+    );
 }

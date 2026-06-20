@@ -302,46 +302,36 @@ fn drawer_text_input(
     ui: &mut Ui,
     text: &mut String,
     id: egui::Id,
-    stroke: Stroke,
     hint: Option<&str>,
 ) -> egui::Response {
     let t = theme::app(ui.ctx());
     let font_id = ui_font_id(14.0);
-    let stroke_inset = stroke.width.max(1.0);
     let w = ui.available_width();
+    let focused = ui.memory(|m| m.has_focus(id));
+    let stroke = if focused {
+        Stroke::new(1.0, t.accent)
+    } else {
+        Stroke::new(1.0, t.input_border)
+    };
+    let frame = egui::Frame::new()
+        .fill(t.editor_bg)
+        .stroke(stroke)
+        .corner_radius(t.corner_input())
+        .inner_margin(egui::Margin::symmetric(DRAWER_INPUT_H_PAD as i8, 0));
 
-    let (row_rect, _) =
-        ui.allocate_exact_size(Vec2::new(w, DRAWER_INPUT_HEIGHT), Sense::hover());
-    ui.painter().rect(
-        row_rect,
-        t.corner_input(),
-        t.editor_bg,
-        stroke,
-        egui::StrokeKind::Inside,
-    );
+    let mut edit = egui::TextEdit::singleline(text)
+        .id(id)
+        .desired_width(w)
+        .font(font_id.clone())
+        .horizontal_align(egui::Align::LEFT)
+        .vertical_align(egui::Align::Center)
+        .frame(frame);
 
-    let inner = row_rect.shrink(stroke_inset);
+    if let Some(h) = hint {
+        edit = edit.hint_text(egui::RichText::new(h).font(font_id));
+    }
 
-    // 对齐 egui demo：horizontal_align + vertical_align + show
-    // https://github.com/emilk/egui/blob/main/crates/egui_demo_lib/src/demo/text_edit.rs
-    ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-        let mut edit = egui::TextEdit::singleline(text)
-            .id(id)
-            .desired_width(f32::INFINITY)
-            .font(font_id.clone())
-            .margin(egui::Margin::symmetric(DRAWER_INPUT_H_PAD as i8, 0))
-            .horizontal_align(egui::Align::LEFT)
-            .vertical_align(egui::Align::Center)
-            .frame(egui::Frame::NONE)
-            .min_size(inner.size());
-
-        if let Some(h) = hint {
-            edit = edit.hint_text(egui::RichText::new(h).font(font_id.clone()));
-        }
-
-        edit.show(ui).response.response
-    })
-    .inner
+    ui.add_sized(Vec2::new(w, DRAWER_INPUT_HEIGHT), edit)
 }
 
 fn draw_title_field(
@@ -357,16 +347,11 @@ fn draw_title_field(
     let id = ui.id().with("hosts_title");
     let t = theme::app(ui.ctx());
     let is_error = *title_error && title.trim().is_empty();
-    let will_focus = *focus_title || ui.memory(|m| m.has_focus(id));
-    let stroke = Stroke::new(
-        if is_error { 1.5 } else { 1.0 },
-        if is_error || will_focus {
-            t.accent
-        } else {
-            t.input_border
-        },
-    );
-    let response = drawer_text_input(ui, title, id, stroke, None);
+    let response = drawer_text_input(ui, title, id, None);
+
+    if is_error {
+        ui.colored_label(t.find_error, "请输入标题");
+    }
 
     if *focus_title {
         response.request_focus();
@@ -410,12 +395,10 @@ fn draw_remote_fields(
     is_add: bool,
 ) {
     form_section(ui, "URL", |ui| {
-        let t = theme::app(ui.ctx());
         drawer_text_input(
             ui,
             &mut state.draft.url,
             ui.id().with("hosts_url"),
-            Stroke::new(1.0, t.input_border),
             Some("http:// 或 https:// 或 file://"),
         );
     });

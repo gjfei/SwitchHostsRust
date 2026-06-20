@@ -8,7 +8,7 @@ use switch_hosts_core::manifest_edit::is_editor_read_only;
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use eframe::egui::text::{CCursor, CCursorRange, LayoutJob, TextFormat};
 use eframe::egui::widgets::text_edit::TextEditOutput;
-use eframe::egui::{self, Color32, FontId, Id, RichText, Sense, Stroke, TextStyle, Ui, Vec2};
+use eframe::egui::{self, Color32, FontId, Id, RichText, Sense, TextStyle, Ui, Vec2};
 
 use crate::panels::status_bar::{draw_status_bar, editor_status, pin_body_and_status_bar};
 use crate::theme::{self, layout};
@@ -35,7 +35,6 @@ impl EditorMetrics {
         Self { font_id }
     }
 
-    /// 按最大行号位数计算 gutter 宽度（对齐 CodeMirror 自动 gutter）。
     fn gutter_width(&self, ui: &Ui, line_count: usize) -> f32 {
         let t = theme::app(ui.ctx());
         let widest = format!("{}", line_count.max(1));
@@ -48,7 +47,40 @@ impl EditorMetrics {
     }
 }
 
-/// 最长行的像素宽度（用于横向滚动，不换行）。
+/// 编辑器布局度量（gutter 固定，仅代码区滚动）。
+struct EditorLayout {
+    gutter_w: f32,
+    code_vp_w: f32,
+    code_content_w: f32,
+    content_h: f32,
+    line_count: usize,
+    viewport_h: f32,
+}
+
+impl EditorLayout {
+    fn compute(
+        ui: &Ui,
+        metrics: &EditorMetrics,
+        text: &str,
+        galley: &egui::Galley,
+        viewport: Vec2,
+    ) -> Self {
+        let line_count = galley.rows.len().max(1);
+        let gutter_w = metrics.gutter_width(ui, line_count);
+        let code_vp_w = (viewport.x - gutter_w).max(0.0);
+        let code_content_w = editor_content_width(ui, text, metrics);
+        let content_h = galley_content_height(galley);
+        Self {
+            gutter_w,
+            code_vp_w,
+            code_content_w,
+            content_h,
+            line_count,
+            viewport_h: viewport.y,
+        }
+    }
+}
+
 fn editor_content_width(ui: &Ui, text: &str, metrics: &EditorMetrics) -> f32 {
     const RIGHT_MARGIN: f32 = 8.0;
     let t = theme::app(ui.ctx());
@@ -72,120 +104,195 @@ fn galley_content_height(galley: &egui::Galley) -> f32 {
     EDITOR_PAD_Y * 2.0 + galley.size().y
 }
 
-fn editor_line_count_estimate(text: &str) -> usize {
-    if text.is_empty() {
-        1
-    } else {
-        text.chars().filter(|&c| c == '\n').count() + 1
-    }
-}
-
 fn draw_editor_body(
     ui: &mut Ui,
     metrics: &EditorMetrics,
     text: &mut String,
-    viewport: Vec2,
     bg: Color32,
     read_only: bool,
     editor_id: Id,
     gutter_line: &mut Option<usize>,
     pending_selection: &mut Option<(usize, usize)>,
 ) {
-    let gutter_w = metrics.gutter_width(ui, editor_line_count_estimate(text));
-    let code_viewport_w = (viewport.x - gutter_w).max(0.0);
-    let code_min_w = editor_content_width(ui, text, metrics).max(code_viewport_w);
+    let origin = ui.max_rect().min;
+    let viewport = ui.max_rect().size();
 
-    egui::ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        .id_salt(editor_id.with("vscroll"))
-        .show(ui, |ui| {
-            let galley = layout_hosts_galley(ui, text, metrics);
-            let line_count = galley.rows.len().max(1);
-            let gutter_w = metrics.gutter_width(ui, line_count);
-            let content_h = galley_content_height(&galley);
-            let total_w = gutter_w + code_min_w;
+    let galley = layout_hosts_galley(ui, text, metrics);
+    let layout = EditorLayout::compute(ui, metrics, text, &galley, viewport);
+    let scroll_h = ui.max_rect().height().min(layout.viewport_h);
 
-            let (body_rect, _) =
-                ui.allocate_exact_size(Vec2::new(total_w, content_h), Sense::hover());
+    // 代码区：单个 ScrollArea 包裹 code_editor
+    let code_rect = egui::Rect::from_min_size(
+        origin + egui::vec2(layout.gutter_w, 0.0),
+        egui::vec2(layout.code_vp_w, scroll_h),
+    );
+    let text_output = ui
+        .scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(code_rect)
+                .id(editor_id.with("code")),
+            |ui| {
+                ui.style_mut().always_scroll_the_only_direction = true;
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .max_width(layout.code_vp_w)
+                    .max_height(scroll_h)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                    .id_salt("scroll")
+                    .show(ui, |ui| {
+                        ui.set_min_size(egui::vec2(
+                            layout.code_content_w,
+                            layout.content_h,
+                        ));
+                        ui.scope_builder(
+                            egui::UiBuilder::new()
+                                .max_rect(egui::Rect::from_min_size(
+                                    ui.cursor().min,
+                                    egui::vec2(layout.code_content_w, layout.content_h),
+                                ))
+                                .id(editor_id.with("code_wide")),
+                            |ui| {
+                                ui.set_width(layout.code_content_w);
+                                draw_text_edit(
+                                    ui,
+                                    text,
+                                    read_only,
+                                    layout.line_count,
+                                    editor_id,
+                                    *gutter_line,
+                                    pending_selection,
+                                )
+                            },
+                        )
+                        .inner
+                    })
+                    .inner
+            },
+        )
+        .inner;
 
-            ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
-                ui.horizontal_top(|ui| {
-                    ui.set_min_size(Vec2::new(total_w, content_h));
-                    ui.spacing_mut().item_spacing.x = 0.0;
+    // 行号区：按 TextEdit 实际绘制位置对齐（galley_pos 已含滚动偏移）
+    let gutter_rect =
+        egui::Rect::from_min_size(origin, egui::vec2(layout.gutter_w, scroll_h));
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(gutter_rect)
+            .id(editor_id.with("gutter")),
+        |ui| {
+            draw_gutter_viewport(
+                ui,
+                metrics,
+                &text_output.galley,
+                text_output.galley_pos,
+                text_output.text_clip_rect,
+                bg,
+                read_only,
+                gutter_line,
+            );
+        },
+    );
 
-                    let gutter_w = metrics.gutter_width(ui, line_count);
-                    ui.scope_builder(
-                        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            Vec2::new(gutter_w, content_h),
-                        )),
-                        |ui| {
-                            draw_gutter(
-                                ui,
-                                metrics,
-                                &galley,
-                                content_h,
-                                bg,
-                                read_only,
-                                gutter_line,
-                            );
-                        },
-                    );
+}
 
-                    egui::ScrollArea::horizontal()
-                        .auto_shrink([false; 2])
-                        .id_salt(editor_id.with("hscroll"))
-                        .show(ui, |ui| {
-                            ui.set_min_width(code_min_w);
-                            ui.set_min_height(content_h);
-                            draw_code_area(
-                                ui,
-                                metrics,
-                                text,
-                                read_only,
-                                line_count,
-                                content_h,
-                                editor_id,
-                                *gutter_line,
-                                pending_selection,
-                            );
-                        });
-                });
-            });
-        });
+/// 行号 gutter：与 TextEdit 的 galley 绘制原点对齐。
+fn draw_gutter_viewport(
+    ui: &mut Ui,
+    metrics: &EditorMetrics,
+    galley: &egui::Galley,
+    galley_pos: egui::Pos2,
+    text_clip_rect: egui::Rect,
+    bg: Color32,
+    read_only: bool,
+    gutter_line: &mut Option<usize>,
+) {
+    let gutter_rect = ui.max_rect();
+    let painter = ui.painter().with_clip_rect(gutter_rect);
+    painter.rect_filled(gutter_rect, 0.0, bg);
+
+    let row_height = ui.fonts_mut(|fonts| fonts.row_height(&metrics.font_id));
+    // galley_pos 为屏幕坐标；与 text_clip_rect 取齐，避免空内容时 galley 行高为 0 导致偏上。
+    let text_base_y = text_clip_rect.min.y;
+    let paint_origin_y = galley_pos.y - galley.rect.top();
+    let line_base_y = if (paint_origin_y - text_base_y).abs() <= 1.0 {
+        text_base_y
+    } else {
+        paint_origin_y
+    };
+
+    let t = theme::app(ui.ctx());
+    let line_count = galley.rows.len().max(1);
+    for line_idx in 0..line_count {
+        let (line_top, line_h) = if let Some(row) = galley.rows.get(line_idx) {
+            (
+                line_base_y + row.rect().top(),
+                row.rect().height().max(row_height),
+            )
+        } else {
+            (
+                line_base_y + line_idx as f32 * row_height,
+                row_height,
+            )
+        };
+        let line_rect = egui::Rect::from_min_max(
+            egui::pos2(gutter_rect.left(), line_top),
+            egui::pos2(gutter_rect.right(), line_top + line_h),
+        );
+        if line_rect.bottom() < gutter_rect.top() || line_rect.top() > gutter_rect.bottom() {
+            continue;
+        }
+
+        let response = ui.interact(
+            line_rect,
+            ui.id().with("gutter").with(line_idx),
+            if read_only {
+                Sense::hover()
+            } else {
+                Sense::click()
+            },
+        );
+        if ui.is_rect_visible(line_rect) {
+            painter.text(
+                egui::pos2(
+                    gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT,
+                    line_rect.center().y,
+                ),
+                egui::Align2::RIGHT_CENTER,
+                format!("{}", line_idx + 1),
+                metrics.font_id.clone(),
+                t.editor_line_number,
+            );
+        }
+        if !read_only && response.clicked() {
+            *gutter_line = Some(line_idx);
+        }
+    }
 }
 
 /// 只读 hosts 预览（对齐 `HostsViewer`）。
-pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
+pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String, paint_background: bool) {
     let t = theme::app(ui.ctx());
     let bg = t.editor_readonly_bg;
     let full_rect = ui.max_rect();
-    ui.painter().rect_filled(full_rect, 0.0, bg);
+    if paint_background {
+        ui.painter().rect_filled(full_rect, 0.0, bg);
+    }
 
     let editor_id = Id::new("hosts_readonly_viewer");
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(full_rect), |ui| {
-        egui::Frame::new()
-            .fill(bg)
-            .stroke(Stroke::NONE)
-            .inner_margin(0.0)
-            .show(ui, |ui| {
-                let metrics = EditorMetrics::from_ui(ui);
-                let inner = ui.available_size();
-                let mut gutter_line = None;
-                let mut no_selection = None;
-                draw_editor_body(
-                    ui,
-                    &metrics,
-                    text,
-                    inner,
-                    bg,
-                    true,
-                    editor_id,
-                    &mut gutter_line,
-                    &mut no_selection,
-                );
-            });
+        let metrics = EditorMetrics::from_ui(ui);
+        let mut gutter_line = None;
+        let mut no_selection = None;
+        draw_editor_body(
+            ui,
+            &metrics,
+            text,
+            bg,
+            true,
+            editor_id,
+            &mut gutter_line,
+            &mut no_selection,
+        );
     });
 }
 
@@ -198,6 +305,10 @@ pub fn draw_editor_with_status_bar(
     editor_revision: u64,
     pending_selection: &mut Option<(usize, usize)>,
 ) {
+    let area = ui.max_rect();
+    ui.set_min_size(area.size());
+    ui.set_max_size(area.size());
+
     let status = editor_status(manifest, selected_id, text);
     pin_body_and_status_bar(
         ui,
@@ -243,160 +354,41 @@ pub fn draw_editor_panel(
         .with(editor_revision);
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(full_rect), |ui| {
-        egui::Frame::new()
-            .fill(bg)
-            .stroke(Stroke::NONE)
-            .inner_margin(0.0)
-            .show(ui, |ui| {
-                let metrics = EditorMetrics::from_ui(ui);
-                let inner = ui.available_size();
-                let mut gutter_line = None;
-                draw_editor_body(
-                    ui,
-                    &metrics,
-                    text,
-                    inner,
-                    bg,
-                    read_only,
-                    editor_id,
-                    &mut gutter_line,
-                    pending_selection,
-                );
-            });
-    });
-}
-
-fn draw_gutter(
-    ui: &mut Ui,
-    metrics: &EditorMetrics,
-    galley: &egui::Galley,
-    content_height: f32,
-    bg: Color32,
-    read_only: bool,
-    gutter_line: &mut Option<usize>,
-) {
-    let line_count = galley.rows.len().max(1);
-    let gutter_width = metrics.gutter_width(ui, line_count);
-    let (gutter_rect, _) = ui.allocate_exact_size(
-        Vec2::new(gutter_width, content_height),
-        Sense::hover(),
-    );
-    ui.painter().rect_filled(gutter_rect, 0.0, bg);
-
-    for (line_idx, row) in galley.rows.iter().enumerate() {
-        let line_top = gutter_rect.top() + EDITOR_PAD_Y + row.rect().top();
-        let line_rect = egui::Rect::from_min_max(
-            egui::pos2(gutter_rect.left(), line_top),
-            egui::pos2(gutter_rect.right(), line_top + row.rect().height()),
-        );
-        let response = ui.interact(
-            line_rect,
-            ui.id().with("gutter").with(line_idx),
-            if read_only {
-                Sense::hover()
-            } else {
-                Sense::click()
-            },
-        );
-        if ui.is_rect_visible(line_rect) {
-            let t = theme::app(ui.ctx());
-            let line_center_y = gutter_rect.top() + EDITOR_PAD_Y + row.rect().center().y;
-            ui.painter().text(
-                egui::pos2(gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT, line_center_y),
-                egui::Align2::RIGHT_CENTER,
-                format!("{}", line_idx + 1),
-                metrics.font_id.clone(),
-                t.editor_line_number,
-            );
-        }
-        if !read_only && response.clicked() {
-            *gutter_line = Some(line_idx);
-        }
-    }
-}
-
-fn draw_code_area(
-    ui: &mut Ui,
-    metrics: &EditorMetrics,
-    text: &mut String,
-    read_only: bool,
-    line_count: usize,
-    content_height: f32,
-    editor_id: Id,
-    gutter_line: Option<usize>,
-    pending_selection: &mut Option<(usize, usize)>,
-) {
-    if read_only {
-        let mut display = text.clone();
-        draw_text_edit(
+        let metrics = EditorMetrics::from_ui(ui);
+        let mut gutter_line = None;
+        draw_editor_body(
             ui,
-            metrics,
-            &mut display,
-            true,
-            line_count,
-            content_height,
+            &metrics,
+            text,
+            bg,
+            read_only,
             editor_id,
-            gutter_line,
+            &mut gutter_line,
             pending_selection,
         );
-        return;
-    }
-
-    draw_text_edit(
-        ui,
-        metrics,
-        text,
-        false,
-        line_count,
-        content_height,
-        editor_id,
-        gutter_line,
-        pending_selection,
-    );
+    });
 }
 
 fn draw_text_edit(
     ui: &mut Ui,
-    metrics: &EditorMetrics,
     text: &mut String,
     read_only: bool,
     line_count: usize,
-    content_height: f32,
     editor_id: Id,
     gutter_line: Option<usize>,
     pending_selection: &mut Option<(usize, usize)>,
-) {
-    let content_w = editor_content_width(ui, text, metrics).max(ui.available_width());
-
-    let mut layouter = hosts_syntax_layouter;
-    let mut edit = egui::TextEdit::multiline(text)
-        .id(editor_id)
-        .code_editor()
-        .font(TextStyle::Monospace)
-        .frame(egui::Frame::NONE)
-        .desired_width(f32::INFINITY)
-        .desired_rows(line_count)
-        .vertical_align(egui::Align::TOP)
-        .horizontal_align(egui::Align::LEFT)
-        .margin(egui::Margin {
-            left: 0,
-            right: 8,
-            top: EDITOR_PAD_Y as i8,
-            bottom: EDITOR_PAD_Y as i8,
-        })
-        .layouter(&mut layouter);
+) -> TextEditOutput {
+    let output = if read_only {
+        let mut display = text.clone();
+        show_text_edit_widget(ui, &mut display, false, line_count, editor_id)
+    } else {
+        show_text_edit_widget(ui, text, true, line_count, editor_id)
+    };
 
     if read_only {
-        edit = edit.interactive(false);
+        return output;
     }
 
-    let output = ui
-        .allocate_ui_with_layout(
-            Vec2::new(content_w, content_height),
-            egui::Layout::top_down(egui::Align::LEFT),
-            |ui| edit.show(ui),
-        )
-        .inner;
     let cursor = output
         .cursor_range
         .as_ref()
@@ -432,7 +424,7 @@ fn draw_text_edit(
         );
     }
 
-    if output.response.has_focus() && !read_only {
+    if output.response.has_focus() {
         let shortcut = ui.input(|i| {
             i.key_pressed(egui::Key::Slash)
                 && (i.modifiers.command || i.modifiers.ctrl)
@@ -443,11 +435,44 @@ fn draw_text_edit(
                 ui,
                 text,
                 &output,
-                // egui 编辑器保持光标在当前行；不用 CodeMirror 的 moveToNextLine 行为。
                 toggle_comment_by_selection(&snapshot, cursor.0, cursor.1, false),
             );
         }
     }
+
+    output
+}
+
+fn show_text_edit_widget(
+    ui: &mut Ui,
+    text: &mut String,
+    interactive: bool,
+    line_count: usize,
+    editor_id: Id,
+) -> TextEditOutput {
+    let mut layouter = hosts_syntax_layouter;
+    let mut edit = egui::TextEdit::multiline(text)
+        .id(editor_id)
+        .code_editor()
+        .font(TextStyle::Monospace)
+        .frame(egui::Frame::NONE)
+        .desired_width(f32::INFINITY)
+        .desired_rows(line_count)
+        .vertical_align(egui::Align::TOP)
+        .horizontal_align(egui::Align::LEFT)
+        .margin(egui::Margin {
+            left: 0,
+            right: 8,
+            top: EDITOR_PAD_Y as i8,
+            bottom: EDITOR_PAD_Y as i8,
+        })
+        .layouter(&mut layouter);
+
+    if !interactive {
+        edit = edit.interactive(false);
+    }
+
+    edit.show(ui)
 }
 
 fn apply_comment_toggle(
@@ -493,6 +518,13 @@ fn hosts_syntax_layouter(
 
 fn build_syntax_job(text: &str, metrics: &EditorMetrics, t: &theme::AppTheme) -> LayoutJob {
     let font_id = metrics.font_id.clone();
+
+    if text.is_empty() {
+        let mut job = LayoutJob::simple(String::new(), font_id, t.editor_text, f32::INFINITY);
+        job.wrap.max_width = f32::INFINITY;
+        return job;
+    }
+
     let mut job = LayoutJob::default();
 
     for line in text.split_inclusive('\n') {
@@ -501,6 +533,9 @@ fn build_syntax_job(text: &str, metrics: &EditorMetrics, t: &theme::AppTheme) ->
         if body.is_empty() {
             if line.ends_with('\n') {
                 job.append("\n", 0.0, line_format(font_id.clone(), t.editor_text));
+            } else {
+                // 空文档或末尾无换行的空行：须占位一节，否则 galley 行高为 0，行号会偏上。
+                job.append("", 0.0, line_format(font_id.clone(), t.editor_text));
             }
             continue;
         }
