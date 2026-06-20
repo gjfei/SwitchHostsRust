@@ -65,7 +65,7 @@ pub fn draw_import_from_url_modal(
 
     let t = theme::app(ctx);
     let mut result = ImportFromUrlResult::None;
-    let screen = ctx.input(|i| i.screen_rect());
+    let screen = ctx.input(|i| i.content_rect());
     let ok_enabled = import_url_valid(&state.url);
 
     let backdrop_id = egui::Id::new("import_from_url_backdrop");

@@ -22,7 +22,7 @@ pub fn layout_vcentered_galley(
         section.format.valign = Align::Center;
         section.format.line_height = Some(line_height);
     }
-    ui.fonts(|fonts| fonts.layout_job(job))
+    ui.fonts_mut(|fonts| fonts.layout_job(job))
 }
 
 #[inline]

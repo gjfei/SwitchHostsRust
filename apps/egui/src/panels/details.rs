@@ -362,7 +362,7 @@ fn draw_trash_footer(ui: &mut Ui, action: &mut DetailsAction) {
         Stroke::new(1.0, t.separator),
     );
 
-    ui.allocate_new_ui(
+    ui.scope_builder(
         egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(SECTION_PAD, 8.0))),
         |ui| {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -419,7 +419,7 @@ fn info_row_mono(ui: &mut Ui, label: &str, value: &str) {
 
 fn compact_btn(ui: &mut Ui, icon: Icon, label: &str) -> egui::Response {
     let t = theme::app(ui.ctx());
-    let galley = ui.fonts(|f| {
+    let galley = ui.fonts_mut(|f| {
         f.layout_no_wrap(
             label.to_owned(),
             ui_font_id(12.0),

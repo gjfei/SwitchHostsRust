@@ -114,7 +114,7 @@ pub fn measure_icon_text_segment_width(ui: &Ui, _icon: Icon, text: &str) -> f32 
 }
 
 fn measure_text_width(ui: &Ui, text: &str) -> f32 {
-    ui.fonts(|fonts| {
+    ui.fonts_mut(|fonts| {
         fonts
             .layout_no_wrap(text.to_owned(), ui_font_id(14.0), Color32::WHITE)
             .size()
@@ -156,7 +156,7 @@ fn segmented_bar(
                     seg_x += seg_w;
 
                     let active = i == selected_idx;
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(seg_rect), |ui| {
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(seg_rect), |ui| {
                         if active {
                             ui.painter().rect_filled(
                                 seg_rect.translate(egui::vec2(0.0, 1.0)),

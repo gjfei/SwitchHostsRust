@@ -22,7 +22,7 @@ pub struct SideDrawerGeometry {
 pub fn side_drawer_geometry(ctx: &egui::Context, width: f32) -> SideDrawerGeometry {
     let t = theme::app(ctx);
     let shadow = t.drawer_shadow();
-    let screen = ctx.input(|i| i.screen_rect());
+    let screen = ctx.input(|i| i.content_rect());
     let backdrop_rect = screen;
     let drawer_rect = {
         let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
@@ -336,7 +336,7 @@ pub fn drawer_select(
     );
 
     let inner_rect = row_rect.shrink2(egui::vec2(layout::DRAWER_INPUT_H_PAD, 0.0));
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_height(inner_rect.height());
             with_flat_combo_style(ui, |ui| {
@@ -435,7 +435,7 @@ pub fn draw_confirm_modal(
 ) -> ConfirmModalResult {
     let t = theme::app(ctx);
     let mut result = ConfirmModalResult::None;
-    let screen = ctx.input(|i| i.screen_rect());
+    let screen = ctx.input(|i| i.content_rect());
 
     let backdrop_id = egui::Id::new(format!("{id}_backdrop"));
     egui::Area::new(backdrop_id)
@@ -523,7 +523,7 @@ pub fn draw_confirm_modal(
 }
 
 fn measure_text_width(ctx: &egui::Context, text: &str, font_id: egui::FontId) -> f32 {
-    ctx.fonts(|fonts| {
+    ctx.fonts_mut(|fonts| {
         fonts
             .layout_no_wrap(
                 text.to_owned(),

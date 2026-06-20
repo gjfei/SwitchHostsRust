@@ -57,7 +57,7 @@ fn editor_content_width(ui: &Ui, text: &str, metrics: &EditorMetrics) -> f32 {
         if line.is_empty() {
             continue;
         }
-        let galley = ui.fonts(|fonts| fonts.layout_job(build_syntax_job(line, metrics, &t)));
+        let galley = ui.fonts_mut(|fonts| fonts.layout_job(build_syntax_job(line, metrics, &t)));
         max_w = max_w.max(galley.size().x);
     }
     max_w + RIGHT_MARGIN
@@ -65,7 +65,7 @@ fn editor_content_width(ui: &Ui, text: &str, metrics: &EditorMetrics) -> f32 {
 
 fn layout_hosts_galley(ui: &Ui, text: &str, metrics: &EditorMetrics) -> std::sync::Arc<egui::Galley> {
     let t = theme::app(ui.ctx());
-    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, metrics, &t)))
+    ui.fonts_mut(|fonts| fonts.layout_job(build_syntax_job(text, metrics, &t)))
 }
 
 fn galley_content_height(galley: &egui::Galley) -> f32 {
@@ -108,13 +108,13 @@ fn draw_editor_body(
             let (body_rect, _) =
                 ui.allocate_exact_size(Vec2::new(total_w, content_h), Sense::hover());
 
-            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
                 ui.horizontal_top(|ui| {
                     ui.set_min_size(Vec2::new(total_w, content_h));
                     ui.spacing_mut().item_spacing.x = 0.0;
 
                     let gutter_w = metrics.gutter_width(ui, line_count);
-                    ui.allocate_new_ui(
+                    ui.scope_builder(
                         egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
                             ui.cursor().min,
                             Vec2::new(gutter_w, content_h),
@@ -164,7 +164,7 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
 
     let editor_id = Id::new("hosts_readonly_viewer");
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(full_rect), |ui| {
         egui::Frame::new()
             .fill(bg)
             .stroke(Stroke::NONE)
@@ -227,7 +227,7 @@ pub fn draw_editor_panel(
     ui.painter().rect_filled(full_rect, 0.0, bg);
 
     if selected_id.is_none() {
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(full_rect), |ui| {
             ui.centered_and_justified(|ui| {
                 ui.label(
                     RichText::new("系统 Hosts 或方案")
@@ -242,7 +242,7 @@ pub fn draw_editor_panel(
         .with(selected_id.unwrap_or("none"))
         .with(editor_revision);
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(full_rect), |ui| {
         egui::Frame::new()
             .fill(bg)
             .stroke(Stroke::NONE)
@@ -284,10 +284,10 @@ fn draw_gutter(
     ui.painter().rect_filled(gutter_rect, 0.0, bg);
 
     for (line_idx, row) in galley.rows.iter().enumerate() {
-        let line_top = gutter_rect.top() + EDITOR_PAD_Y + row.rect.top();
+        let line_top = gutter_rect.top() + EDITOR_PAD_Y + row.rect().top();
         let line_rect = egui::Rect::from_min_max(
             egui::pos2(gutter_rect.left(), line_top),
-            egui::pos2(gutter_rect.right(), line_top + row.rect.height()),
+            egui::pos2(gutter_rect.right(), line_top + row.rect().height()),
         );
         let response = ui.interact(
             line_rect,
@@ -300,7 +300,7 @@ fn draw_gutter(
         );
         if ui.is_rect_visible(line_rect) {
             let t = theme::app(ui.ctx());
-            let line_center_y = gutter_rect.top() + EDITOR_PAD_Y + row.rect.center().y;
+            let line_center_y = gutter_rect.top() + EDITOR_PAD_Y + row.rect().center().y;
             ui.painter().text(
                 egui::pos2(gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT, line_center_y),
                 egui::Align2::RIGHT_CENTER,
@@ -373,7 +373,7 @@ fn draw_text_edit(
         .id(editor_id)
         .code_editor()
         .font(TextStyle::Monospace)
-        .frame(false)
+        .frame(egui::Frame::NONE)
         .desired_width(f32::INFINITY)
         .desired_rows(line_count)
         .vertical_align(egui::Align::TOP)
@@ -416,6 +416,7 @@ fn draw_text_edit(
                 index: start,
                 prefer_next_row: false,
             },
+            h_pos: None,
         }));
         state.store(ui.ctx(), output.response.id);
         output.response.request_focus();
@@ -462,27 +463,32 @@ fn apply_comment_toggle(
     let mut state = output.state.clone();
     state.cursor.set_char_range(Some(CCursorRange {
         primary: CCursor {
-            index: result.selection_start,
-            prefer_next_row: false,
-        },
-        secondary: CCursor {
             index: result.selection_end,
             prefer_next_row: false,
         },
+        secondary: CCursor {
+            index: result.selection_start,
+            prefer_next_row: false,
+        },
+        h_pos: None,
     }));
     state.store(ui.ctx(), output.response.id);
     output.response.request_focus();
 }
 
-fn cursor_char_range(range: &egui::text::CursorRange) -> (usize, usize) {
+fn cursor_char_range(range: &egui::text::CCursorRange) -> (usize, usize) {
     let [min, max] = range.sorted_cursors();
-    (min.ccursor.index, max.ccursor.index)
+    (min.index, max.index)
 }
 
-fn hosts_syntax_layouter(ui: &Ui, text: &str, _wrap_width: f32) -> std::sync::Arc<egui::Galley> {
+fn hosts_syntax_layouter(
+    ui: &Ui,
+    text: &dyn egui::TextBuffer,
+    _wrap_width: f32,
+) -> std::sync::Arc<egui::Galley> {
     let metrics = EditorMetrics::from_ui(ui);
     let t = theme::app(ui.ctx());
-    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, &metrics, &t)))
+    ui.fonts_mut(|fonts| fonts.layout_job(build_syntax_job(text.as_str(), &metrics, &t)))
 }
 
 fn build_syntax_job(text: &str, metrics: &EditorMetrics, t: &theme::AppTheme) -> LayoutJob {

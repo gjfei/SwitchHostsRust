@@ -26,20 +26,21 @@ pub struct NavAction {
 }
 
 pub fn draw_navigation(
-    ctx: &egui::Context,
+    ui: &mut Ui,
     view: &mut NavView,
     hosts_list_visible: bool,
     trash_count: usize,
 ) -> NavAction {
+    let ctx = ui.ctx();
     let t = theme::app(ctx);
     let mut action = NavAction::default();
 
-    egui::SidePanel::left("nav_rail")
-        .exact_width(layout::NAV_WIDTH)
+    egui::Panel::left("nav_rail")
+        .exact_size(layout::NAV_WIDTH)
         .resizable(false)
         .show_separator_line(false)
         .frame(egui::Frame::new().fill(t.window_bg))
-        .show(ctx, |ui| {
+        .show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.add_space(8.0);
                 if nav_icon(ui, Icon::List, *view == NavView::Hosts).clicked() {

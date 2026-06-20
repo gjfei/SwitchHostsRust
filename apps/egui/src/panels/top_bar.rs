@@ -64,7 +64,7 @@ pub fn draw_top_bar(
         egui::pos2(bar_rect.right(), bar_rect.bottom()),
     );
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(left_rect), |ui| {
         ui.set_min_height(layout::TOP_BAR_HEIGHT);
         ui.set_max_height(layout::TOP_BAR_HEIGHT);
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -93,7 +93,7 @@ pub fn draw_top_bar(
         });
     });
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(right_rect), |ui| {
         ui.set_min_height(layout::TOP_BAR_HEIGHT);
         ui.set_max_height(layout::TOP_BAR_HEIGHT);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -87,7 +87,7 @@ impl HistoryState {
 }
 
 fn history_drawer_width(ctx: &egui::Context) -> f32 {
-    let screen = ctx.input(|i| i.screen_rect());
+    let screen = ctx.input(|i| i.content_rect());
     let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
     inset.width().clamp(layout::DRAWER_WIDTH, 720.0)
 }
@@ -148,7 +148,7 @@ pub fn draw_history_drawer(
                         );
                         ui.painter()
                             .rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ui.allocate_new_ui(
+                        ui.scope_builder(
                             egui::UiBuilder::new().max_rect(body_rect),
                             |ui| {
                                 draw_history_body(
@@ -234,13 +234,13 @@ fn draw_history_body(ui: &mut Ui, drawer_w: f32, panel_h: f32, state: &mut Histo
         ui.add_space(layout::DRAWER_PAD);
         let (viewer_rect, _) =
             ui.allocate_exact_size(Vec2::new(viewer_w, content_h), Sense::hover());
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(viewer_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(viewer_rect), |ui| {
             draw_history_viewer_panel(ui, viewer_w, content_h, state);
         });
         ui.add_space(HISTORY_PANEL_GAP);
         let (list_rect, _) =
             ui.allocate_exact_size(Vec2::new(HISTORY_LIST_WIDTH, content_h), Sense::hover());
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(list_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
             draw_history_list_panel(ui, HISTORY_LIST_WIDTH, content_h, state);
         });
         ui.add_space(layout::DRAWER_PAD);
@@ -307,7 +307,7 @@ fn draw_history_list_panel(ui: &mut Ui, width: f32, height: f32, state: &mut His
                     let pad = HISTORY_LIST_INNER_PAD;
                     let inner_rect = ui.max_rect().shrink2(Vec2::splat(pad));
 
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(inner_rect), |ui| {
                         if state.items.is_empty() {
                             ui.centered_and_justified(|ui| {
                                 ui.label(RichText::new("暂无记录").color(t.weak_text));
@@ -447,7 +447,7 @@ fn draw_footer(
         Vec2::new(half, DRAWER_BTN_H),
     );
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new("历史记录上限")
@@ -486,7 +486,7 @@ fn draw_footer(
         });
     });
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if outline_button(ui, "关闭").clicked() {
                 state.close();
@@ -529,17 +529,10 @@ fn draw_footer_help(ui: &mut Ui) {
         help_galley,
         t.weak_text,
     );
-    if help.hovered() {
-        egui::show_tooltip_at_pointer(
-            ui.ctx(),
-            ui.layer_id(),
-            Id::new("history_help_tip"),
-            |ui| {
-                ui.set_max_width(260.0);
-                ui.label("每次写入系统 Hosts 时保存一份快照；超出上限时删除最旧的记录。");
-            },
-        );
-    }
+    help.on_hover_ui(|ui| {
+        ui.set_max_width(260.0);
+        ui.label("每次写入系统 Hosts 时保存一份快照；超出上限时删除最旧的记录。");
+    });
 }
 
 fn format_timestamp(ms: i64) -> String {

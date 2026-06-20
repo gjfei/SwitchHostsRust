@@ -51,8 +51,8 @@ pub fn pin_body_and_status_bar(
         outer.max,
     );
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), draw_body);
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(status_rect), draw_status);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), draw_body);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(status_rect), draw_status);
     ui.expand_to_include_rect(outer);
 }
 

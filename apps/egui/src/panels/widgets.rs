@@ -65,7 +65,7 @@ pub fn ellipsize_text(ui: &Ui, text: &str, font_id: FontId, max_width: f32) -> S
         return String::new();
     }
     let measure = |s: &str| {
-        ui.fonts(|fonts| {
+        ui.fonts_mut(|fonts| {
             fonts
                 .layout_no_wrap(s.to_owned(), font_id.clone(), Color32::WHITE)
                 .size()

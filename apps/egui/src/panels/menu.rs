@@ -2,7 +2,7 @@
 
 use eframe::egui::{
     self, Align, Align2, Area, Color32, CornerRadius, Frame, Id, Key, Layout, Order, PointerButton,
-    Pos2, Rect, Response, Sense, Stroke, Ui, UiKind, Vec2,
+    Popup, Pos2, Rect, Response, Sense, Stroke, Ui, UiKind, Vec2,
 };
 
 use crate::fonts::ui_font_id;
@@ -40,7 +40,7 @@ fn menu_width_key(popup_id: Id) -> Id {
 }
 
 pub fn is_menu_open(ui: &Ui, popup_id: Id) -> bool {
-    ui.memory(|mem| mem.is_popup_open(popup_id))
+    Popup::is_id_open(ui.ctx(), popup_id)
 }
 
 pub fn close_menu(ui: &Ui, popup_id: Id) {
@@ -52,7 +52,7 @@ pub fn close_menu(ui: &Ui, popup_id: Id) {
             d.remove::<f64>(context_menu_open_time_key());
         }
     });
-    ui.memory_mut(|mem| mem.close_popup());
+    Popup::close_id(ui.ctx(), popup_id);
 }
 
 fn invalidate_menu_width(ui: &Ui, popup_id: Id) {
@@ -66,7 +66,7 @@ pub fn toggle_click_menu(ui: &Ui, popup_id: Id, anchor: &Response) {
         invalidate_menu_width(ui, popup_id);
         ui.ctx()
             .data_mut(|d| d.remove_temp::<Pos2>(popup_pos_id(popup_id)));
-        ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+        Popup::toggle_id(ui.ctx(), popup_id);
     }
 }
 
@@ -87,7 +87,7 @@ pub fn open_context_menu(_ui: &Ui, response: &Response) {
         d.insert_temp(context_menu_owner_key(), response.id);
         d.insert_temp(context_menu_open_time_key(), open_time);
     });
-    ctx.memory_mut(|mem| mem.open_popup(context_menu_popup()));
+    Popup::open_id(ctx, context_menu_popup());
 }
 
 /// 绘制已打开的右键菜单；仅 `owner` 与打开时的控件一致时才绘制。
@@ -122,7 +122,7 @@ fn layer_to_global(ctx: &egui::Context, layer_id: egui::LayerId, pos: Pos2) -> P
 fn measure_item_width(ctx: &egui::Context, icon: Option<Icon>, label: &str) -> f32 {
     let font_id = ui_font_id(MENU_FONT_SIZE);
     let text_w = ctx
-        .fonts(|fonts| fonts.layout_no_wrap(label.to_owned(), font_id, Color32::PLACEHOLDER))
+        .fonts_mut(|fonts| fonts.layout_no_wrap(label.to_owned(), font_id, Color32::PLACEHOLDER))
         .size()
         .x;
     let icon_part = if icon.is_some() {

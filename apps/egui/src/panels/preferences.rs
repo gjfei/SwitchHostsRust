@@ -165,7 +165,7 @@ pub fn draw_preferences_drawer(
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
                         ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             draw_tab_bar(ui, &mut state.active_tab);
                             ScrollArea::vertical()
@@ -213,7 +213,7 @@ pub fn draw_preferences_drawer(
                                 ui.cursor().min,
                                 Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
                             );
-                            ui.allocate_new_ui(
+                            ui.scope_builder(
                                 egui::UiBuilder::new().max_rect(footer_rect),
                                 |ui| {
                                     if draw_draft_footer(
@@ -699,7 +699,7 @@ fn draw_draft_footer(
     );
 
     let mut saved = false;
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(row_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row_rect), |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(layout::DRAWER_PAD);
             let label = match state.draft_save_status {

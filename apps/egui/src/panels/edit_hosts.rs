@@ -226,7 +226,7 @@ fn draw_drawer_footer(
         Vec2::new(half, 36.0),
     );
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
         if !is_add {
             if outline_button_with_icon(ui, Icon::Trash, "移到回收站", false, true).clicked() {
                 if let Some(EditHostsMode::Edit { id }) = state.mode.clone() {
@@ -242,7 +242,7 @@ fn draw_drawer_footer(
         }
     });
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if primary_button(ui, "确定").clicked() {
                 *result = try_save(state, manifest, paths);
@@ -324,7 +324,7 @@ fn drawer_text_input(
 
     // 对齐 egui demo：horizontal_align + vertical_align + show
     // https://github.com/emilk/egui/blob/main/crates/egui_demo_lib/src/demo/text_edit.rs
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
         let mut edit = egui::TextEdit::singleline(text)
             .id(id)
             .desired_width(f32::INFINITY)
@@ -332,14 +332,14 @@ fn drawer_text_input(
             .margin(egui::Margin::symmetric(DRAWER_INPUT_H_PAD as i8, 0))
             .horizontal_align(egui::Align::LEFT)
             .vertical_align(egui::Align::Center)
-            .frame(false)
+            .frame(egui::Frame::NONE)
             .min_size(inner.size());
 
         if let Some(h) = hint {
-            edit = edit.hint_text(h).hint_text_font(font_id);
+            edit = edit.hint_text(egui::RichText::new(h).font(font_id.clone()));
         }
 
-        edit.show(ui).response
+        edit.show(ui).response.response
     })
     .inner
 }
@@ -503,7 +503,7 @@ fn draw_group_transfer(ui: &mut Ui, state: &mut EditHostsState, manifest: &Manif
         let mut move_to_selected = false;
         let mut move_to_all = false;
 
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(left_rect), |ui| {
             transfer_column(
                 ui,
                 ui.id().with("xfer_left"),
@@ -514,7 +514,7 @@ fn draw_group_transfer(ui: &mut Ui, state: &mut EditHostsState, manifest: &Manif
                 &mut state.transfer_left_selected,
             );
         });
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(mid_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(mid_rect), |ui| {
             transfer_arrows(
                 ui,
                 !state.transfer_left_selected.is_empty(),
@@ -523,7 +523,7 @@ fn draw_group_transfer(ui: &mut Ui, state: &mut EditHostsState, manifest: &Manif
                 &mut move_to_all,
             );
         });
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(right_rect), |ui| {
             transfer_column(
                 ui,
                 ui.id().with("xfer_right"),

@@ -306,7 +306,7 @@ fn apply_style(ctx: &Context, t: &AppTheme) {
         ..Default::default()
     };
     style.visuals.dark_mode = t.dark;
-    ctx.set_style(Arc::new(style));
+    ctx.set_global_style(Arc::new(style));
 }
 
 fn default_text_styles() -> BTreeMap<TextStyle, FontId> {

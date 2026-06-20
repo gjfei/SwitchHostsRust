@@ -83,7 +83,7 @@ impl FindReplaceState {
 }
 
 fn find_drawer_width(ctx: &egui::Context) -> f32 {
-    let screen = ctx.input(|i| i.screen_rect());
+    let screen = ctx.input(|i| i.content_rect());
     let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
     inset.width().clamp(layout::DRAWER_WIDTH, 720.0)
 }
@@ -161,7 +161,7 @@ pub fn draw_find_replace_drawer(
                             Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
                         );
                         ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             draw_find_body(
                                 ui,
@@ -184,7 +184,7 @@ pub fn draw_find_replace_drawer(
                             ui.cursor().min,
                             Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
                         );
-                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
                             draw_find_footer(
                                 ui,
                                 state,
@@ -284,7 +284,7 @@ fn draw_find_footer(
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
 
-    ui.allocate_new_ui(
+    ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(rect)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
@@ -406,7 +406,7 @@ fn draw_flushed_input(
     let mut edit = egui::TextEdit::singleline(value)
         .id(id)
         .hint_text(placeholder)
-        .frame(false)
+        .frame(egui::Frame::NONE)
         .margin(egui::Margin::ZERO);
     if disabled {
         edit = edit.interactive(false);
@@ -415,7 +415,7 @@ fn draw_flushed_input(
         ui.memory_mut(|m| m.request_focus(id));
     }
 
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(input_rect), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(input_rect), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_min_height(input_rect.height());
             if ui.add(edit).changed() {
@@ -680,7 +680,7 @@ fn paint_match_cell(
             },
         );
         x += ui
-            .fonts(|f| f.layout_no_wrap(tag.to_owned(), ui_font_id(10.0), text_color))
+            .fonts_mut(|f| f.layout_no_wrap(tag.to_owned(), ui_font_id(10.0), text_color))
             .size()
             .x
             + 8.0;
@@ -700,7 +700,7 @@ fn paint_match_cell(
         } else {
             text_color
         };
-        let galley = ui.fonts(|f| {
+        let galley = ui.fonts_mut(|f| {
             f.layout_no_wrap(text.to_owned(), mono.clone(), segment_color)
         });
         let gw = galley.size().x;
@@ -711,7 +711,7 @@ fn paint_match_cell(
             }
             let clipped = ellipsize_text(ui, text, mono.clone(), room);
             let cg = ui
-                .fonts(|f| f.layout_no_wrap(clipped, mono.clone(), segment_color));
+                .fonts_mut(|f| f.layout_no_wrap(clipped, mono.clone(), segment_color));
             if is_match {
                 let r = egui::Rect::from_min_size(
                     egui::pos2(x, cy - layout::TREE_FONT_SIZE * 0.55),

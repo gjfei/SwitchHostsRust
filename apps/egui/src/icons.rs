@@ -41,6 +41,7 @@ fn white_silhouette(image: &mut ColorImage) {
 fn colorize_silhouette(src: &ColorImage, tint: Color32) -> ColorImage {
     ColorImage {
         size: src.size,
+        source_size: src.source_size,
         pixels: src
             .pixels
             .iter()
@@ -62,9 +63,11 @@ fn colorize_silhouette(src: &ColorImage, tint: Color32) -> ColorImage {
 }
 
 fn load_silhouette(icon: Icon, px: u32) -> Arc<ColorImage> {
+    let options = resvg::usvg::Options::default();
     let mut image = egui_extras::image::load_svg_bytes_with_size(
         icon.svg_bytes(),
-        Some(SizeHint::Height(px)),
+        SizeHint::Height(px),
+        &options,
     )
     .unwrap_or_else(|e| panic!("failed to rasterize icon {icon:?}: {e}"));
     white_silhouette(&mut image);

@@ -45,7 +45,7 @@ switch-hosts-core.workspace = true
 ui-assets.workspace = true
 chrono.workspace = true
 tokio.workspace = true
-reqwest = { workspace = true, default-features = false, features = ["rustls-tls"] }
+reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 service = { workspace = true, default-features = false, features = ["client", "api"] }
 eframe.workspace = true
 egui.workspace = true
@@ -58,6 +58,7 @@ auto-launch.workspace = true
 webbrowser.workspace = true
 rfd.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
+resvg = { version = "0.45", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 raw-window-handle = "0.6"

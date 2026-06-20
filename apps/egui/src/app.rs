@@ -96,7 +96,7 @@ impl SwitchHostsApp {
         let tray = None;
         let hosts_list_visible = config.left_panel_show;
 
-        let system_dark = cc.egui_ctx.style().visuals.dark_mode;
+        let system_dark = cc.egui_ctx.global_style().visuals.dark_mode;
         theme::apply_theme(&cc.egui_ctx, &config.theme, system_dark);
 
         let mut http_api = HttpApiRuntime::new();
@@ -580,7 +580,9 @@ impl eframe::App for SwitchHostsApp {
         egui::Rgba::from(visuals.window_fill()).to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
         self.sync_macos_dock_icon();
         self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
@@ -606,11 +608,11 @@ impl eframe::App for SwitchHostsApp {
 
         // 顶栏必须最先绘制（标题栏 overlay 区域），再绘制其下方的测试横幅。
         // 顶栏对齐原版 `background: transparent`，避免 egui 不透明填充盖住 macOS 交通灯。
-        egui::TopBottomPanel::top("top_bar")
-            .exact_height(layout::TOP_BAR_HEIGHT)
+        egui::Panel::top("top_bar")
+            .exact_size(layout::TOP_BAR_HEIGHT)
             .show_separator_line(false)
             .frame(top_bar_frame(&self.config, &t))
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 let action = draw_top_bar(
                     ui,
                     &mut self.manifest,
@@ -638,15 +640,15 @@ impl eframe::App for SwitchHostsApp {
             });
 
         if self.test_mode {
-            egui::TopBottomPanel::top("test_banner")
-                .exact_height(layout::TEST_BANNER_HEIGHT)
+            egui::Panel::top("test_banner")
+                .exact_size(layout::TEST_BANNER_HEIGHT)
                 .show_separator_line(false)
                 .frame(
                     egui::Frame::new()
                         .fill(egui::Color32::from_rgb(255, 248, 230))
                         .inner_margin(egui::Margin::symmetric(8, 0)),
                 )
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     ui.set_min_height(layout::TEST_BANNER_HEIGHT);
                     ui.set_max_height(layout::TEST_BANNER_HEIGHT);
                     ui.centered_and_justified(|ui| {
@@ -703,7 +705,7 @@ impl eframe::App for SwitchHostsApp {
         }
 
         let nav_action = draw_navigation(
-            ctx,
+            ui,
             &mut self.nav_view,
             self.hosts_list_visible,
             self.trashcan.items.len(),
@@ -720,10 +722,10 @@ impl eframe::App for SwitchHostsApp {
         }
 
         if self.hosts_list_visible {
-            egui::SidePanel::left("hosts_sidebar")
-                .default_width(self.config.left_panel_width as f32)
+            egui::Panel::left("hosts_sidebar")
+                .default_size(self.config.left_panel_width as f32)
                 .frame(egui::Frame::new().fill(t.sidebar_bg))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     paint_list_panel_border(ui);
                     ui.vertical(|ui| {
                         let body_h =
@@ -757,10 +759,10 @@ impl eframe::App for SwitchHostsApp {
         }
 
         if self.config.right_panel_show {
-            egui::SidePanel::right("details_panel")
-                .default_width(self.config.right_panel_width as f32)
+            egui::Panel::right("details_panel")
+                .default_size(self.config.right_panel_width as f32)
                 .frame(egui::Frame::new().fill(t.window_bg).inner_margin(0.0))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     ui.vertical(|ui| {
                         let body_h =
                             (ui.available_height() - layout::STATUS_BAR_HEIGHT).max(0.0);
@@ -790,7 +792,7 @@ impl eframe::App for SwitchHostsApp {
         let editor_text_before = self.editor_text.clone();
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(t.editor_bg).inner_margin(0.0))
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 draw_editor_with_status_bar(
                     ui,
                     &mut self.editor_text,

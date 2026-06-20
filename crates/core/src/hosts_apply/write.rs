@@ -10,9 +10,10 @@ use super::target::HostsTarget;
 pub const SWITCHHOSTS_MARKER: &str = "# --- SWITCHHOSTS_CONTENT_START ---";
 
 pub fn content_hash(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
+    Sha256::digest(content.as_bytes())
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect()
 }
 
 pub fn read_existing(path: &Path) -> Result<String, ApplyError> {
