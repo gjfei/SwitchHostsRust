@@ -277,7 +277,6 @@ fn draw_find_footer(
     config: &AppConfig,
     options: &FindSearchOptions,
 ) {
-    let t = theme::app(ui.ctx());
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
 

@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/service",
     "crates/cli",
+    "crates/xtask",
     "apps/egui",
 ]
 default-members = ["crates/cli"]

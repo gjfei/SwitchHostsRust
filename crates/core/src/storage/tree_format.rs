@@ -296,7 +296,6 @@ fn copy_if_present(src: &Map<String, Value>, dst: &mut Map<String, Value>, key: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
 
     fn tree_fixture() -> Vec<Value> {
         json!([

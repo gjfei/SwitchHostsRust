@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use switch_hosts_core::hosts_apply::elevation::SystemElevation;
 use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
@@ -10,8 +12,6 @@ use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
 use eframe::egui::{self, Vec2};
 use raw_window_handle::HasWindowHandle;
-use tray_icon::menu::MenuEvent;
-use tray_icon::TrayIconEvent;
 
 use crate::config_effects::apply_config_side_effects;
 use crate::data_transfer::{
@@ -34,7 +34,7 @@ use crate::panels::{
 };
 use crate::remote_refresh::{refresh_all_remote_hosts, refresh_remote_node};
 use crate::theme::{self, layout};
-use crate::tray_native::{TrayAction, TrayController};
+use crate::tray_native::{try_init_tray, try_recv_tray_action, TrayAction, TrayController};
 
 const FEEDBACK_URL: &str = "";
 const HOMEPAGE_URL: &str = "";
@@ -75,8 +75,11 @@ pub struct SwitchHostsApp {
     import_from_url: ImportFromUrlState,
     import_error: Option<String>,
     apply_error: Option<String>,
+    will_quit: AtomicBool,
     #[cfg(target_os = "macos")]
     traffic_lights_positioned: bool,
+    #[cfg(target_os = "macos")]
+    dock_icon_installed: bool,
 }
 
 impl SwitchHostsApp {
@@ -88,7 +91,7 @@ impl SwitchHostsApp {
         let manifest = Manifest::load(&paths).unwrap_or_default();
         let trashcan = Trashcan::load(&paths.trashcan_file);
         let test_mode = matches!(target, HostsTarget::File(_)) && cfg!(debug_assertions);
-        let tray = TrayController::try_new(&manifest);
+        let tray = None;
         let hosts_list_visible = config.left_panel_show;
 
         let system_dark = cc.egui_ctx.style().visuals.dark_mode;
@@ -125,11 +128,15 @@ impl SwitchHostsApp {
             import_from_url: ImportFromUrlState::default(),
             import_error: None,
             apply_error: None,
+            will_quit: AtomicBool::new(false),
             #[cfg(target_os = "macos")]
             traffic_lights_positioned: false,
+            #[cfg(target_os = "macos")]
+            dock_icon_installed: false,
         };
         app.reload_editor();
         app.sync_macos_traffic_lights(cc);
+        app.sync_macos_dock_icon();
         app
     }
 
@@ -177,6 +184,19 @@ impl SwitchHostsApp {
             self.traffic_lights_positioned = true;
         }
     }
+
+    #[cfg(target_os = "macos")]
+    fn sync_macos_dock_icon(&mut self) {
+        if self.dock_icon_installed {
+            return;
+        }
+        if crate::macos::configure_macos_app() {
+            self.dock_icon_installed = true;
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn sync_macos_dock_icon(&mut self) {}
 
     #[cfg(not(target_os = "macos"))]
     fn sync_macos_traffic_lights(&mut self, _handle: &impl HasWindowHandle) {}
@@ -416,30 +436,52 @@ impl SwitchHostsApp {
     }
 
     fn show_main_window(&self, ctx: &egui::Context) {
+        #[cfg(target_os = "macos")]
+        crate::macos::show_main_window();
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        ctx.request_repaint();
+    }
+
+    fn request_quit(&mut self, ctx: &egui::Context) {
+        self.will_quit.store(true, Ordering::SeqCst);
+        #[cfg(target_os = "macos")]
+        crate::macos_delegate::mark_quit_requested();
+        self.tray.take();
+        self.http_api.shutdown();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        #[cfg(target_os = "macos")]
+        crate::macos::quit_app();
+    }
+
+    fn handle_close_request(&self, ctx: &egui::Context) {
+        if self.will_quit.load(Ordering::SeqCst) {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        if crate::macos_delegate::quit_was_requested() {
+            return;
+        }
+
+        if self.config.tray_mini_window && self.tray.is_some() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
     }
 
     fn handle_tray_action(&mut self, ctx: &egui::Context, action: TrayAction) {
         match action {
             TrayAction::ShowWindow => self.show_main_window(ctx),
-            TrayAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            TrayAction::Quit => self.request_quit(ctx),
             TrayAction::ToggleScheme(id) => self.toggle_and_apply_hosts(&id),
         }
     }
 
     fn poll_tray_events(&mut self, ctx: &egui::Context) {
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if let Some(tray) = &self.tray {
-                if let Some(action) = tray.map_menu_event(&event) {
-                    self.handle_tray_action(ctx, action);
-                }
-            }
-        }
-        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
-            if let Some(action) = TrayController::map_tray_event(&event) {
-                self.handle_tray_action(ctx, action);
-            }
+        try_init_tray(&mut self.tray, &self.manifest);
+        crate::tray_native::poll_tray_events_on_runloop();
+        while let Some(action) = try_recv_tray_action() {
+            self.handle_tray_action(ctx, action);
         }
     }
 
@@ -475,7 +517,7 @@ impl SwitchHostsApp {
         match action {
             ConfigMenuAction::None => {}
             ConfigMenuAction::OpenPreferences => self.preferences.open_drawer(),
-            ConfigMenuAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            ConfigMenuAction::Quit => self.request_quit(ctx),
             ConfigMenuAction::OpenFeedback => open_url(FEEDBACK_URL),
             ConfigMenuAction::OpenHomepage => open_url(HOMEPAGE_URL),
             ConfigMenuAction::Export => match run_export_dialog(&self.paths) {
@@ -502,6 +544,7 @@ impl eframe::App for SwitchHostsApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.sync_macos_dock_icon();
         self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
 
@@ -515,11 +558,13 @@ impl eframe::App for SwitchHostsApp {
             self.find_replace.open_drawer();
         }
 
-        if self.config.tray_mini_window && self.tray.is_some() {
-            if ctx.input(|i| i.viewport().close_requested()) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-            }
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.handle_close_request(ctx);
+        }
+
+        #[cfg(target_os = "macos")]
+        if crate::macos_delegate::take_dock_show_request() {
+            self.show_main_window(ctx);
         }
 
         // 顶栏必须最先绘制（标题栏 overlay 区域），再绘制其下方的测试横幅。

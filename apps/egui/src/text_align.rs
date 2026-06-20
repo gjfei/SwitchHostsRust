@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, text::LayoutJob, Align, Color32, FontId, Galley, Pos2, Rect, Ui};
+use eframe::egui::{text::LayoutJob, Align, Color32, FontId, Galley, Pos2, Rect, Ui};
 
 use crate::icons::{self, Icon};
 

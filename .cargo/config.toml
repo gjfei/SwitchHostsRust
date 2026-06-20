@@ -1,3 +1,8 @@
 [alias]
-# -x 后的命令必须整体引用，否则 -p egui-app 会丢失，退化成 default-members (cli)
-dev-gui = ["watch", "-x", "run -p egui-app"]
+# 单次运行：应用退出后终端回到 shell
+dev-gui = ["run", "-p", "egui-app"]
+# 热重载：监听变更自动 run；应用退出后 watch 仍驻留，需 Ctrl+C 结束
+dev-gui-watch = ["watch", "-x", "run -p egui-app"]
+# macOS 发布：.app → dist/；加 DMG 见 package-dmg
+package-macos = ["run", "-p", "xtask", "--", "package-macos"]
+package-dmg = ["run", "-p", "xtask", "--", "package-dmg"]

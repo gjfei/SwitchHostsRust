@@ -5,7 +5,7 @@ use eframe::egui::{self, Color32, Sense, Ui, Vec2};
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
-use crate::theme::{self, layout};
+use crate::theme;
 
 /// 对齐 Mantine `SegmentedControl` size md（含 root padding）。
 pub const HEIGHT: f32 = 36.0;

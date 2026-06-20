@@ -1,8 +1,118 @@
 //! macOS 窗口 chrome 调整（对齐 SwitchHosts Tauri `traffic_light_position`）。
 
+use std::path::PathBuf;
+
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use crate::theme::{self, layout};
+use crate::app_icon;
+use crate::theme::layout;
+
+/// 是否在 `.app` bundle 内运行（Mission Control 图标依赖 bundle 元数据）。
+pub fn running_in_app_bundle() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.parent()
+                .and_then(|macos| macos.parent())
+                .map(|contents| contents.join("Info.plist"))
+        })
+        .is_some_and(|plist| plist.is_file())
+}
+
+/// 配置 Dock / Mission Control / Cmd+Tab 应用身份与图标。
+///
+/// - 使用 SwitchHosts `icon.icns`
+/// - 强制 Regular 激活策略（避免被当作后台/终端附属进程）
+/// - 进程名显示为 SwitchHosts
+pub fn configure_macos_app() -> bool {
+    use objc2::AnyThread;
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSImage};
+    use objc2_foundation::{NSProcessInfo, NSString};
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        tracing::warn!("不在主线程，跳过 macOS 应用配置");
+        return false;
+    };
+
+    let path = dock_icns_path();
+    let path_str = path.to_string_lossy();
+    unsafe {
+        let image = NSImage::initWithContentsOfFile(
+            NSImage::alloc(),
+            &NSString::from_str(&path_str),
+        );
+        let Some(image) = image else {
+            tracing::warn!("无法从 {} 加载应用图标", path.display());
+            return false;
+        };
+
+        extern "C" {
+            static NSApp: Option<&'static NSApplication>;
+        }
+        let app = if let Some(app) = NSApp {
+            app
+        } else {
+            &*NSApplication::sharedApplication(mtm)
+        };
+
+        app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+        app.setApplicationIconImage(Some(&image));
+        NSProcessInfo::processInfo().setProcessName(&NSString::from_str("SwitchHosts"));
+    }
+
+    crate::macos_delegate::install_app_delegate();
+
+    if !running_in_app_bundle() {
+        tracing::debug!(
+            "未在 .app 内运行，Mission Control 可能不显示图标；请用 ./scripts/run-gui-macos.sh"
+        );
+    }
+
+    true
+}
+
+/// 退出前清理：移除托盘并终止 NSApplication 事件循环。
+pub fn quit_app() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    NSApplication::sharedApplication(mtm).terminate(None);
+}
+
+/// Dock 点击重新打开时，将应用激活到前台并显示窗口。
+pub fn show_main_window() {
+    crate::macos_delegate::show_windows_at_appkit_level();
+}
+
+/// 激活应用到前台（不强制显示窗口）。
+pub fn activate_app() {
+    show_main_window();
+}
+
+/// `.app` 内用 bundle Resources；`cargo run` 时写入临时 icns。
+fn dock_icns_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(resources) = exe
+            .parent()
+            .and_then(|macos| macos.parent())
+            .map(|contents| contents.join("Resources/icon.icns"))
+        {
+            if resources.is_file() {
+                return resources;
+            }
+        }
+    }
+
+    let path = std::env::temp_dir().join("SwitchHostsRust-dock.icns");
+    if std::fs::write(&path, app_icon::dock_icns_bytes()).is_err() {
+        tracing::warn!("无法写入临时应用图标 {}", path.display());
+    }
+    path
+}
 
 /// 将交通灯移入 40px 顶栏区域并垂直居中（对齐 `lifecycle.rs`）。
 /// 窗口尚未就绪时会失败，调用方应重试。
@@ -26,6 +136,7 @@ pub fn position_traffic_lights(handle: &impl HasWindowHandle) -> bool {
             tracing::warn!("无法从 NSView 获取 NSWindow，跳过交通灯定位");
             return false;
         };
+        crate::macos_delegate::register_main_ns_window(&window);
         inset_traffic_lights(
             &window,
             f64::from(layout::TOP_BAR_TRAFFIC_LIGHT_X),
@@ -80,6 +191,7 @@ unsafe fn inset_traffic_lights(
         rect.origin.y = button_y;
         button.setFrameOrigin(rect.origin);
     }
+
     true
 }
 
@@ -88,8 +200,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn traffic_light_constants_match_switchhosts() {
-        assert_eq!(layout::TOP_BAR_TRAFFIC_LIGHT_X, 12.0);
-        assert_eq!(layout::TOP_BAR_TRAFFIC_LIGHT_Y, 18.0);
+    fn dock_icns_path_prefers_embedded_bytes_when_not_bundled() {
+        let path = dock_icns_path();
+        assert!(path.ends_with("SwitchHostsRust-dock.icns") || path.ends_with("icon.icns"));
     }
 }

@@ -22,7 +22,7 @@ You may obtain a copy of the License at
 
 Derived third-party assets in this repository:
 
-- apps/egui/icons/ — application icons copied from SwitchHosts
+- apps/egui/icons/ — application and tray icons copied from SwitchHosts
   (src-tauri/icons/), used under Apache-2.0.
 
 ================================================================================

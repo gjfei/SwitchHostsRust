@@ -1,5 +1,4 @@
 use core::storage::config::AppConfig;
-use core::storage::manifest::Manifest;
 use core::toggle::toggle_item;
 use serde_json::json;
 

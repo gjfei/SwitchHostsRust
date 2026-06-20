@@ -2,12 +2,15 @@ pub mod segmented;
 pub mod config_effects;
 pub mod data_transfer;
 pub mod http_api_runtime;
+pub mod app_icon;
 pub mod app;
 pub mod fonts;
 pub mod icons;
 pub mod lifecycle;
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(target_os = "macos")]
+pub mod macos_delegate;
 pub mod panels;
 pub mod remote_refresh;
 pub mod text_align;

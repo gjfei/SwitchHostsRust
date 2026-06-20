@@ -13,10 +13,11 @@ build = "build.rs"
 name = "SwitchHostsRust"
 identifier = "app.switchhostsrust"
 icon = [
-    "icons/32x32.png",
-    "icons/128x128.png",
-    "icons/128x128@2x.png",
-    "icons/icon.icns",
+    "apps/egui/icons/32x32.png",
+    "apps/egui/icons/128x128.png",
+    "apps/egui/icons/128x128@2x.png",
+    "apps/egui/icons/icon.icns",
+    "apps/egui/icons/icon.ico",
 ]
 copyright = "Copyright (c) switch-hosts-rust contributors"
 category = "Developer Tool"
@@ -55,11 +56,20 @@ tray-icon.workspace = true
 auto-launch.workspace = true
 webbrowser.workspace = true
 rfd.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 raw-window-handle = "0.6"
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+objc2 = { version = "0.6", default-features = false, features = ["std", "exception"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSData", "NSString", "NSProcessInfo", "NSObject", "NSArray"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "std",
+    "NSApplication",
+    "NSImage",
+    "NSRunningApplication",
+    "NSResponder",
     "NSWindow",
     "NSView",
     "NSButton",

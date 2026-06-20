@@ -6,14 +6,29 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 APP_NAME="SwitchHostsRust"
+WITH_DMG=false
+for arg in "$@"; do
+    case "$arg" in
+        --dmg) WITH_DMG=true ;;
+        -h|--help)
+            echo "用法: $0 [--dmg]"
+            echo "  --dmg  额外生成 dist/${APP_NAME}.dmg"
+            exit 0
+            ;;
+    esac
+done
 
 if ! command -v cargo-bundle >/dev/null 2>&1; then
     echo "==> 安装 cargo-bundle"
     cargo install cargo-bundle --locked
 fi
 
+echo "==> cargo build --release -p egui-app --bin switch-hosts-rust-gui"
+cargo build --release -p egui-app --bin switch-hosts-rust-gui
+
 echo "==> cargo bundle --release -p egui-app"
-cargo bundle --release -p egui-app
+# cargo-bundle 内部 build 不会传 -p，需先显式编译 GUI；跳过其重复 build
+CARGO_BUNDLE_SKIP_BUILD=1 cargo bundle --release -p egui-app
 
 TARGET_DIR="$(cargo metadata --format-version=1 --no-deps 2>/dev/null \
     | python3 -c "import json,sys; print(json.load(sys.stdin)['target_directory'])")"
@@ -36,13 +51,20 @@ if command -v codesign >/dev/null 2>&1; then
         echo "warning: codesign 失败，可手动运行或忽略" >&2
 fi
 
+DMG_PATH="$DIST/${APP_NAME}.dmg"
+
+if [[ "$WITH_DMG" == true ]]; then
+    echo "==> 生成 DMG"
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DIST_APP" -ov -format UDZO "$DMG_PATH"
+fi
+
 echo ""
 echo "==> 产物:"
 echo "  $DIST_APP"
 echo "  $BUNDLE_APP"
+if [[ "$WITH_DMG" == true ]]; then
+    echo "  $DMG_PATH"
+fi
 echo ""
 echo "运行:"
 echo "  open \"$DIST_APP\""
-echo ""
-echo "生成 DMG（可选）:"
-echo "  hdiutil create -volname \"$APP_NAME\" -srcfolder \"$DIST_APP\" -ov -format UDZO \"dist/${APP_NAME}.dmg\""

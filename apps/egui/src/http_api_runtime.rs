@@ -18,9 +18,7 @@ impl HttpApiRuntime {
     }
 
     pub fn sync(&mut self, config: &AppConfig, paths: &AppPaths, target: &HostsTarget) {
-        if let Some(handle) = self.handle.take() {
-            handle.join.abort();
-        }
+        self.shutdown();
         if !config.http_api_on {
             return;
         }
@@ -34,12 +32,16 @@ impl HttpApiRuntime {
             Err(err) => tracing::warn!("HTTP API 启动失败: {err}"),
         }
     }
+
+    pub fn shutdown(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.join.abort();
+        }
+    }
 }
 
 impl Drop for HttpApiRuntime {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            handle.join.abort();
-        }
+        self.shutdown();
     }
 }

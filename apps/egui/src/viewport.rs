@@ -1,6 +1,7 @@
 //! 根窗口 viewport 配置（对齐 SwitchHosts `lifecycle::create_main_window`）。
 
 use switch_hosts_core::storage::config::AppConfig;
+use eframe::egui;
 use eframe::egui::ViewportBuilder;
 
 /// 构建主窗口 viewport：默认自定义标题栏，TopBar 绘制在系统标题栏区域。
@@ -9,6 +10,16 @@ pub fn root_viewport_builder(config: &AppConfig) -> ViewportBuilder {
         .with_title("SwitchHosts")
         .with_inner_size([960.0, 640.0])
         .with_min_inner_size([300.0, 200.0]);
+
+    // macOS Dock 由 `icon.icns` 设置；传 default 避免 eframe 用 icon.png 或 egui「e」覆盖。
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.with_icon(egui::IconData::default());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder = builder.with_icon(crate::app_icon::window_icon());
+    }
 
     if config.use_system_window_frame {
         return builder;

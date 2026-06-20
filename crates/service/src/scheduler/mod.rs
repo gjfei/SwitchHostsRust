@@ -4,7 +4,6 @@ use std::time::Duration;
 use switch_hosts_core::storage::entries;
 use switch_hosts_core::storage::manifest::Manifest;
 use switch_hosts_core::storage::paths::AppPaths;
-use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio::time;
 
