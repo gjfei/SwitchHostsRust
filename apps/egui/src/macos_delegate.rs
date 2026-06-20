@@ -13,6 +13,8 @@ use objc2_app_kit::{NSApplication, NSWindow};
 
 static DOCK_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+/// 与「关闭窗口时最小化到托盘」相反：未勾选时最后一个窗口关闭后应正常退出。
+static TERMINATE_AFTER_LAST_WINDOW_CLOSED: AtomicBool = AtomicBool::new(false);
 static HANDLER_INSTALLED: Once = Once::new();
 static TRAY_POLL_INSTALLED: Once = Once::new();
 static MAIN_NS_WINDOW: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
@@ -78,7 +80,12 @@ extern "C-unwind" fn application_should_terminate_after_last_window_closed(
     _sel: Sel,
     _sender: *mut AnyObject,
 ) -> Bool {
-    Bool::new(false)
+    Bool::new(TERMINATE_AFTER_LAST_WINDOW_CLOSED.load(Ordering::SeqCst))
+}
+
+/// 同步 macOS「最后窗口关闭后是否退出」策略。
+pub fn sync_terminate_after_last_window_closed(tray_mini_window: bool) {
+    TERMINATE_AFTER_LAST_WINDOW_CLOSED.store(!tray_mini_window, Ordering::SeqCst);
 }
 
 extern "C-unwind" fn application_should_terminate(

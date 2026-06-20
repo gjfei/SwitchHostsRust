@@ -20,6 +20,8 @@ pub fn apply_config_side_effects(
     http_api: &mut HttpApiRuntime,
 ) {
     theme::apply_theme(ctx, &config.theme, system_dark);
+    #[cfg(target_os = "macos")]
+    crate::macos_delegate::sync_terminate_after_last_window_closed(config.tray_mini_window);
     if let Ok(exe) = std::env::current_exe() {
         let _ = lifecycle::sync_launch_at_login(config, &exe);
     }

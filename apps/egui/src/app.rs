@@ -139,6 +139,7 @@ impl SwitchHostsApp {
             dock_icon_installed: false,
         };
         app.reload_editor();
+        app.apply_config_effects(&cc.egui_ctx);
         app.sync_macos_traffic_lights(cc);
         app.sync_macos_dock_icon();
         app
@@ -469,18 +470,24 @@ impl SwitchHostsApp {
         ctx.request_repaint();
     }
 
-    fn request_quit(&mut self, ctx: &egui::Context) {
-        self.will_quit.store(true, Ordering::SeqCst);
+    fn prepare_for_quit(&mut self) {
+        if self.will_quit.swap(true, Ordering::SeqCst) {
+            return;
+        }
         #[cfg(target_os = "macos")]
         crate::macos_delegate::mark_quit_requested();
         self.tray.take();
         self.http_api.shutdown();
+    }
+
+    fn request_quit(&mut self, ctx: &egui::Context) {
+        self.prepare_for_quit();
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         #[cfg(target_os = "macos")]
         crate::macos::quit_app();
     }
 
-    fn handle_close_request(&self, ctx: &egui::Context) {
+    fn handle_close_request(&mut self, ctx: &egui::Context) {
         if self.will_quit.load(Ordering::SeqCst) {
             return;
         }
@@ -492,6 +499,10 @@ impl SwitchHostsApp {
         if self.config.tray_mini_window && self.tray.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        } else {
+            // 关闭已在进行中：只做清理，让窗口自然关闭；macOS 通过
+            // applicationShouldTerminateAfterLastWindowClosed 正常退出，避免重复 terminate 崩溃。
+            self.prepare_for_quit();
         }
     }
 
