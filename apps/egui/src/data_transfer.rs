@@ -1,17 +1,18 @@
 //! 导入/导出（对齐 SwitchHosts `exportData` / `importData` / `importDataFromUrl`）。
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use chrono::Local;
 use rfd::FileDialog;
-use service::{fetch_url, ClientConfig};
 use switch_hosts_core::import_export::{
     export_to_file, import_backup_bytes, read_file_with_limit, ERR_INVALID_DATA, ERR_PARSE,
     MAX_IMPORT_BACKUP_BYTES,
 };
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::paths::AppPaths;
+
+use crate::remote_refresh::client_config_from_app;
+use crate::shared_runtime;
 
 pub fn default_export_file_name() -> String {
     format!("switchhosts_{}.json", Local::now().format("%Y%m%d_%H%M%S%.3f"))
@@ -97,20 +98,9 @@ pub fn import_backup_file(paths: &AppPaths, src: &Path) -> ImportResult {
 }
 
 pub fn import_from_url(url: &str, paths: &AppPaths, config: &AppConfig) -> ImportResult {
-    let client_cfg = ClientConfig {
-        use_proxy: config.use_proxy,
-        proxy_protocol: config.proxy_protocol.clone(),
-        proxy_host: config.proxy_host.clone(),
-        proxy_port: config.proxy_port,
-        timeout: Duration::from_secs(30),
-    };
+    let client_cfg = client_config_from_app(config);
 
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(err) => return ImportResult::HardError(err.to_string()),
-    };
-
-    let bytes = match rt.block_on(fetch_url(url, &client_cfg)) {
+    let bytes = match shared_runtime::fetch(&client_cfg, url) {
         Ok(text) => text.into_bytes(),
         Err(err) => {
             tracing::warn!("import-from-url fetch failed ({url}): {err}");

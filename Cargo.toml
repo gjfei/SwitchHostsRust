@@ -37,13 +37,20 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sha2 = "0.10"
 regex = "1"
 uuid = { version = "1", features = ["v4"] }
-eframe = { version = "0.31", default-features = true }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow"] }
 egui = "0.31"
-egui_extras = { version = "0.31", features = ["svg", "image"] }
+egui_extras = { version = "0.31", features = ["svg"] }
 rfd = "0.15"
 webbrowser = "1"
 tray-icon = "0.19"
 auto-launch = "0.5"
 
 switch-hosts-core = { path = "crates/core", package = "core" }
-service = { path = "crates/service" }
+service = { path = "crates/service", default-features = false }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"

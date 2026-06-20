@@ -41,6 +41,12 @@ if [[ ! -d "$BUNDLE_APP" ]]; then
     exit 1
 fi
 
+ICON_ICNS="$BUNDLE_APP/Contents/Resources/icon.icns"
+if [[ ! -f "$ICON_ICNS" ]]; then
+    echo "error: 未找到应用图标 $ICON_ICNS（检查 apps/egui/Cargo.toml [package.metadata.bundle] icon 路径）" >&2
+    exit 1
+fi
+
 mkdir -p "$DIST"
 rm -rf "$DIST_APP"
 cp -R "$BUNDLE_APP" "$DIST_APP"

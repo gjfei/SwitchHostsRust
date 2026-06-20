@@ -4,11 +4,22 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::{Local, TimeZone};
 use serde_json::json;
-use service::{fetch_url, ClientConfig};
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::entries::{read_entry, write_entry};
 use switch_hosts_core::storage::manifest::{find_node, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
+
+use crate::shared_runtime;
+
+pub fn client_config_from_app(config: &AppConfig) -> service::ClientConfig {
+    service::ClientConfig {
+        use_proxy: config.use_proxy,
+        proxy_protocol: config.proxy_protocol.clone(),
+        proxy_host: config.proxy_host.clone(),
+        proxy_port: config.proxy_port,
+        timeout: Duration::from_secs(30),
+    }
+}
 
 pub fn refresh_all_remote_hosts(
     paths: &AppPaths,
@@ -63,18 +74,9 @@ pub fn refresh_remote_node(
         .filter(|u| !u.is_empty())
         .ok_or_else(|| "未设置 URL".to_string())?;
 
-    let client_cfg = ClientConfig {
-        use_proxy: config.use_proxy,
-        proxy_protocol: config.proxy_protocol.clone(),
-        proxy_host: config.proxy_host.clone(),
-        proxy_port: config.proxy_port,
-        timeout: Duration::from_secs(30),
-    };
+    let client_cfg = client_config_from_app(config);
 
-    let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-    let new_content = rt
-        .block_on(fetch_url(url, &client_cfg))
-        .map_err(|e| e.to_string())?;
+    let new_content = shared_runtime::fetch(&client_cfg, url).map_err(|e| e.to_string())?;
 
     let old_content = read_entry(&paths.entries_dir, id).unwrap_or_default();
     let content_changed = new_content != old_content;

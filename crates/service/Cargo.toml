@@ -7,6 +7,12 @@ authors.workspace = true
 rust-version.workspace = true
 description = "SwitchHostsRust network service layer"
 
+[features]
+default = ["client", "api"]
+client = []
+api = ["dep:axum"]
+scheduler = ["client"]
+
 [dependencies]
 switch-hosts-core.workspace = true
 serde.workspace = true
@@ -16,15 +22,13 @@ anyhow.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
-axum.workspace = true
+axum = { workspace = true, optional = true }
 chrono.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 wiremock.workspace = true
 pretty_assertions.workspace = true
-
-
 
 [[test]]
 name = "client_integration"
@@ -33,3 +37,4 @@ path = "tests/client_integration.rs"
 [[test]]
 name = "api_integration"
 path = "tests/api_integration.rs"
+required-features = ["api"]

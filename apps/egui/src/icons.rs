@@ -13,7 +13,16 @@ fn icon_cache_id() -> Id {
     Id::new("swh_icon_cache")
 }
 
-/// 按 (icon, 像素高度, tint) 缓存已着色纹理。
+const ICON_CACHE_PX: [u32; 4] = [16, 20, 24, 32];
+const MAX_ICON_TEXTURES: usize = 96;
+
+fn quantize_icon_px(px: u32) -> u32 {
+    ICON_CACHE_PX
+        .into_iter()
+        .find(|size| px <= *size)
+        .unwrap_or(32)
+}
+
 #[derive(Clone, Default)]
 struct IconCache {
     silhouettes: HashMap<(Icon, u32), Arc<ColorImage>>,
@@ -76,7 +85,7 @@ fn load_silhouette(icon: Icon, px: u32) -> Arc<ColorImage> {
 }
 
 fn colored_icon_texture(ctx: &Context, icon: Icon, size: f32, tint: Color32) -> Option<SizedTexture> {
-    let px = (size * ctx.pixels_per_point()).round().max(1.0) as u32;
+    let px = quantize_icon_px((size * ctx.pixels_per_point()).round().max(1.0) as u32);
     let key = (icon, px, [tint.r(), tint.g(), tint.b(), tint.a()]);
 
     if let Some(handle) = ctx.data(|d| {
@@ -106,9 +115,11 @@ fn colored_icon_texture(ctx: &Context, icon: Icon, size: f32, tint: Color32) -> 
     let handle = ctx.load_texture(name, colored, egui::TextureOptions::LINEAR);
 
     ctx.data_mut(|d| {
-        d.get_temp_mut_or_insert_with(icon_cache_id(), IconCache::default)
-            .textures
-            .insert(key, handle.clone());
+        let cache = d.get_temp_mut_or_insert_with(icon_cache_id(), IconCache::default);
+        if cache.textures.len() >= MAX_ICON_TEXTURES {
+            cache.textures.clear();
+        }
+        cache.textures.insert(key, handle.clone());
     });
 
     Some(SizedTexture::new(handle.id(), Vec2::splat(size)))
@@ -292,10 +303,4 @@ pub fn node_icon(node: &Value, collapsed: bool) -> Icon {
         }
         _ => Icon::FileText,
     }
-}
-
-/// 安装 SVG/图片加载器（在 `App::new` 中调用一次）。
-pub fn install_loaders(ctx: &egui::Context) {
-    egui_extras::install_image_loaders(ctx);
-    let _ = ctx;
 }

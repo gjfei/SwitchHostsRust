@@ -14,6 +14,7 @@ pub mod macos_delegate;
 pub mod panels;
 pub mod remote_refresh;
 pub mod text_align;
+pub mod shared_runtime;
 pub mod theme;
 pub mod tray;
 pub mod tray_native;

@@ -13,11 +13,10 @@ build = "build.rs"
 name = "SwitchHostsRust"
 identifier = "app.switchhostsrust"
 icon = [
+    "apps/egui/icons/icon.icns",
     "apps/egui/icons/32x32.png",
     "apps/egui/icons/128x128.png",
     "apps/egui/icons/128x128@2x.png",
-    "apps/egui/icons/icon.icns",
-    "apps/egui/icons/icon.ico",
 ]
 copyright = "Copyright (c) switch-hosts-rust contributors"
 category = "Developer Tool"
@@ -29,7 +28,7 @@ SwitchHosts project. Manage and switch between multiple hosts file
 configurations on macOS, Windows, and Linux.
 """
 osx_minimum_system_version = "10.15"
-osx_frameworks = ["Security"]
+# Security 由 core/build.rs 动态链接系统框架，勿写入 osx_frameworks（cargo-bundle 会整包复制 ~6MB）
 
 [lib]
 name = "egui_app"
@@ -43,9 +42,10 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 switch-hosts-core.workspace = true
-tokio.workspace = true
 chrono.workspace = true
-service.workspace = true
+tokio.workspace = true
+reqwest = { workspace = true, default-features = false, features = ["rustls-tls"] }
+service = { workspace = true, default-features = false, features = ["client", "api"] }
 eframe.workspace = true
 egui.workspace = true
 egui_extras.workspace = true

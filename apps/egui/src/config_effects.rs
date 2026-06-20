@@ -8,6 +8,7 @@ use switch_hosts_core::storage::paths::AppPaths;
 
 use crate::http_api_runtime::HttpApiRuntime;
 use crate::lifecycle;
+use crate::shared_runtime;
 use crate::theme;
 
 pub fn apply_config_side_effects(
@@ -22,8 +23,8 @@ pub fn apply_config_side_effects(
     if let Ok(exe) = std::env::current_exe() {
         let _ = lifecycle::sync_launch_at_login(config, &exe);
     }
+    shared_runtime::invalidate_http_client();
     http_api.sync(config, paths, target);
-    let _ = paths;
 }
 
 pub fn reveal_path_in_file_manager(path: &std::path::Path) {

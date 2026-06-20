@@ -38,10 +38,17 @@ fn resolve_target(paths: &AppPaths, args: &Args) -> HostsTarget {
     }
 }
 
-fn main() -> Result<()> {
+fn init_tracing() {
+    if cfg!(not(debug_assertions)) && std::env::var_os("RUST_LOG").is_none() {
+        return;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
+}
+
+fn main() -> Result<()> {
+    init_tracing();
 
     let args = Args::parse();
 

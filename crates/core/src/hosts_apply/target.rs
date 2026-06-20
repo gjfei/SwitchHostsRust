@@ -50,6 +50,26 @@ pub fn system_hosts_path() -> PathBuf {
     PathBuf::from("/etc/hosts")
 }
 
+/// 读取当前写入 target 对应的 hosts 文件（Debug 下为 dev/test.hosts，Release 下为 /etc/hosts）。
+pub fn read_target_hosts_content(target: &HostsTarget) -> String {
+    let path = target.path();
+    if !path.exists() {
+        return String::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(err) => {
+            tracing::warn!("failed to read hosts ({}): {err}", path.display());
+            String::new()
+        }
+    }
+}
+
+/// 读取系统 hosts 文件（/etc/hosts 或 Windows 等价路径）。
+pub fn read_system_hosts_content() -> String {
+    read_target_hosts_content(&HostsTarget::System)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +84,14 @@ mod tests {
             HostsTarget::File(p) => assert!(p.ends_with("internal/dev/test.hosts")),
             _ => panic!("expected file target"),
         }
+    }
+
+    #[test]
+    fn read_target_hosts_content_reads_file_target() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("hosts");
+        std::fs::write(&path, "127.0.0.1 example.test\n").unwrap();
+        let content = read_target_hosts_content(&HostsTarget::File(path));
+        assert!(content.contains("example.test"));
     }
 }

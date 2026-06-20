@@ -40,12 +40,16 @@ pub enum FetchError {
 }
 
 pub async fn fetch_url(url: &str, config: &ClientConfig) -> Result<String, FetchError> {
+    let client = build_client(config)?;
+    fetch_url_with_client(&client, url).await
+}
+
+pub async fn fetch_url_with_client(client: &Client, url: &str) -> Result<String, FetchError> {
     if let Some(path) = url.strip_prefix("file://") {
         let content = std::fs::read_to_string(path)?;
         return Ok(normalize_crlf(&content));
     }
 
-    let client = build_client(config)?;
     let resp = client.get(url).send().await?;
     let bytes = resp.bytes().await?;
     if bytes.len() > MAX_RESPONSE_BYTES {
@@ -54,7 +58,7 @@ pub async fn fetch_url(url: &str, config: &ClientConfig) -> Result<String, Fetch
     Ok(normalize_crlf(&String::from_utf8_lossy(&bytes)))
 }
 
-fn build_client(config: &ClientConfig) -> Result<Client, FetchError> {
+pub fn build_client(config: &ClientConfig) -> Result<Client, FetchError> {
     let mut builder = Client::builder().timeout(config.timeout);
     if config.use_proxy && !config.proxy_host.is_empty() && config.proxy_port > 0 {
         let proxy_url = format!(

@@ -111,12 +111,13 @@ pub fn draw_editor_with_status_bar(
     text: &mut String,
     manifest: &Manifest,
     selected_id: Option<&str>,
+    editor_revision: u64,
     pending_selection: &mut Option<(usize, usize)>,
 ) {
     let status = editor_status(manifest, selected_id, text);
     pin_body_and_status_bar(
         ui,
-        |ui| draw_editor_panel(ui, text, manifest, selected_id, pending_selection),
+        |ui| draw_editor_panel(ui, text, manifest, selected_id, editor_revision, pending_selection),
         |ui| draw_status_bar(ui, &status),
     );
 }
@@ -126,6 +127,7 @@ pub fn draw_editor_panel(
     text: &mut String,
     manifest: &Manifest,
     selected_id: Option<&str>,
+    editor_revision: u64,
     pending_selection: &mut Option<(usize, usize)>,
 ) {
     let node = selected_id.and_then(|id| find_node(&manifest.root, id));
@@ -153,7 +155,9 @@ pub fn draw_editor_panel(
     }
 
     let line_count = text.lines().count().max(1);
-    let editor_id = Id::new(EDITOR_WIDGET_ID);
+    let editor_id = Id::new(EDITOR_WIDGET_ID)
+        .with(selected_id.unwrap_or("none"))
+        .with(editor_revision);
 
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
         egui::Frame::new()
@@ -250,6 +254,46 @@ fn draw_gutter(
 }
 
 fn draw_code_area(
+    ui: &mut Ui,
+    metrics: &EditorMetrics,
+    text: &mut String,
+    read_only: bool,
+    line_count: usize,
+    body_height: f32,
+    editor_id: Id,
+    gutter_line: Option<usize>,
+    pending_selection: &mut Option<(usize, usize)>,
+) {
+    if read_only {
+        let mut display = text.clone();
+        draw_text_edit(
+            ui,
+            metrics,
+            &mut display,
+            true,
+            line_count,
+            body_height,
+            editor_id,
+            gutter_line,
+            pending_selection,
+        );
+        return;
+    }
+
+    draw_text_edit(
+        ui,
+        metrics,
+        text,
+        false,
+        line_count,
+        body_height,
+        editor_id,
+        gutter_line,
+        pending_selection,
+    );
+}
+
+fn draw_text_edit(
     ui: &mut Ui,
     metrics: &EditorMetrics,
     text: &mut String,

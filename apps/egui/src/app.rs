@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use switch_hosts_core::hosts_apply::elevation::SystemElevation;
 use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
-use switch_hosts_core::hosts_apply::target::HostsTarget;
-use switch_hosts_core::manifest_edit::{add_parent_for_selection, insert_node, remove_node_with_parent, SYSTEM_NODE_ID};
+use switch_hosts_core::hosts_apply::target::{read_target_hosts_content, HostsTarget};
+use switch_hosts_core::manifest_edit::{add_parent_for_selection, insert_node, remove_node_with_parent, is_editor_read_only, SYSTEM_NODE_ID};
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::entries::{self, delete_entry};
 use switch_hosts_core::storage::manifest::{collect_content_ids, find_node, Manifest};
@@ -68,6 +68,9 @@ pub struct SwitchHostsApp {
     system_dark: bool,
     startup_refresh_scheduled: bool,
     startup_refresh_done: bool,
+    startup_refresh_rx: Option<std::sync::mpsc::Receiver<Manifest>>,
+    /// 每次 `reload_editor` 递增，用于重置 egui TextEdit 内部缓存。
+    editor_revision: u64,
     tray: Option<TrayController>,
     editor_dirty: bool,
     pending_trash_delete: Option<String>,
@@ -85,7 +88,6 @@ pub struct SwitchHostsApp {
 impl SwitchHostsApp {
     pub fn new(cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
         crate::fonts::setup_cjk_fonts(&cc.egui_ctx);
-        crate::icons::install_loaders(&cc.egui_ctx);
 
         let config = AppConfig::load(&paths.config_file);
         let manifest = Manifest::load(&paths).unwrap_or_default();
@@ -121,6 +123,8 @@ impl SwitchHostsApp {
             system_dark,
             startup_refresh_scheduled,
             startup_refresh_done: false,
+            startup_refresh_rx: None,
+            editor_revision: 0,
             tray,
             editor_dirty: false,
             pending_trash_delete: None,
@@ -153,6 +157,25 @@ impl SwitchHostsApp {
     }
 
     fn tick_startup_remote_refresh(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.startup_refresh_rx {
+            if let Ok(manifest) = rx.try_recv() {
+                self.manifest = manifest;
+                self.startup_refresh_rx = None;
+                if self
+                    .selected_id
+                    .as_ref()
+                    .is_some_and(|id| {
+                        find_node(&self.manifest.root, id)
+                            .is_some_and(|n| n.get("type").and_then(|v| v.as_str()) == Some("remote"))
+                    })
+                {
+                    self.reload_editor();
+                }
+                ctx.request_repaint();
+            }
+            return;
+        }
+
         if self.startup_refresh_done || !self.startup_refresh_scheduled {
             return;
         }
@@ -162,17 +185,19 @@ impl SwitchHostsApp {
             return;
         }
         self.startup_refresh_done = true;
-        let _ = refresh_all_remote_hosts(&self.paths, &mut self.manifest, &self.config);
-        if self
-            .selected_id
-            .as_ref()
-            .is_some_and(|id| {
-                find_node(&self.manifest.root, id)
-                    .is_some_and(|n| n.get("type").and_then(|v| v.as_str()) == Some("remote"))
+
+        let paths = self.paths.clone();
+        let config = self.config.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.startup_refresh_rx = Some(rx);
+        std::thread::Builder::new()
+            .name("startup-remote-refresh".into())
+            .spawn(move || {
+                let mut manifest = Manifest::load(&paths).unwrap_or_default();
+                let _ = refresh_all_remote_hosts(&paths, &mut manifest, &config);
+                let _ = tx.send(manifest);
             })
-        {
-            self.reload_editor();
-        }
+            .ok();
     }
 
     #[cfg(target_os = "macos")]
@@ -202,8 +227,9 @@ impl SwitchHostsApp {
     fn sync_macos_traffic_lights(&mut self, _handle: &impl HasWindowHandle) {}
 
     fn reload_editor(&mut self) {
+        self.editor_revision = self.editor_revision.wrapping_add(1);
         self.editor_text = if self.selected_id.as_deref() == Some(SYSTEM_NODE_ID) {
-            std::fs::read_to_string(self.target.path()).unwrap_or_default()
+            read_target_hosts_content(&self.target)
         } else if let Some(id) = &self.selected_id {
             entries::read_entry(&self.paths.entries_dir, id).unwrap_or_default()
         } else {
@@ -759,12 +785,19 @@ impl eframe::App for SwitchHostsApp {
                     &mut self.editor_text,
                     &self.manifest,
                     self.selected_id.as_deref(),
+                    self.editor_revision,
                     &mut self.editor_pending_selection,
                 );
             });
 
         if self.editor_text != editor_text_before {
-            self.editor_dirty = true;
+            let node = self
+                .selected_id
+                .as_deref()
+                .and_then(|id| find_node(&self.manifest.root, id));
+            if !is_editor_read_only(self.selected_id.as_deref(), node.as_ref()) {
+                self.editor_dirty = true;
+            }
         }
         if self.editor_dirty {
             if self.save_editor() {

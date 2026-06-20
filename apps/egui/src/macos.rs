@@ -93,7 +93,7 @@ pub fn activate_app() {
     show_main_window();
 }
 
-/// `.app` 内用 bundle Resources；`cargo run` 时写入临时 icns。
+/// `.app` 内用 bundle Resources；`cargo run` 时用源码树 `icons/icon.icns`。
 fn dock_icns_path() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(resources) = exe
@@ -107,11 +107,12 @@ fn dock_icns_path() -> PathBuf {
         }
     }
 
-    let path = std::env::temp_dir().join("SwitchHostsRust-dock.icns");
-    if std::fs::write(&path, app_icon::dock_icns_bytes()).is_err() {
-        tracing::warn!("无法写入临时应用图标 {}", path.display());
+    let dev = app_icon::dock_icns_path();
+    if dev.is_file() {
+        return dev;
     }
-    path
+
+    std::env::temp_dir().join("SwitchHostsRust-dock.icns")
 }
 
 /// 将交通灯移入 40px 顶栏区域并垂直居中（对齐 `lifecycle.rs`）。

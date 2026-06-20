@@ -75,6 +75,10 @@ impl FindReplaceState {
 
     fn close(&mut self) {
         self.open = false;
+        self.rows.clear();
+        self.rows.shrink_to_fit();
+        self.error = None;
+        self.is_replacing = false;
     }
 }
 
