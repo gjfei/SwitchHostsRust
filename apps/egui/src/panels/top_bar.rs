@@ -190,7 +190,7 @@ fn paint_centered_title(
     };
 
     let title_width = title_galley.size().x;
-    let mut total_w = Icon::DEFAULT_SIZE + CLUSTER_GAP + title_width;
+    let mut total_w = icons::DEFAULT_ICON_SIZE + CLUSTER_GAP + title_width;
     if let Some(g) = readonly_galley.as_ref() {
         total_w += CLUSTER_GAP + g.size().x + 8.0;
     }
@@ -199,9 +199,9 @@ fn paint_centered_title(
     let mut x = title_rect.center().x - total_w / 2.0;
     let y = title_rect.center().y;
 
-    let icon_center = egui::pos2(x + Icon::DEFAULT_SIZE / 2.0, y);
-    icons::paint_icon(ui, node_icon, icon_center, Icon::DEFAULT_SIZE, gray);
-    x += Icon::DEFAULT_SIZE + CLUSTER_GAP;
+    let icon_center = egui::pos2(x + icons::DEFAULT_ICON_SIZE / 2.0, y);
+    icons::paint_icon(ui, node_icon, icon_center, icons::DEFAULT_ICON_SIZE, gray);
+    x += icons::DEFAULT_ICON_SIZE + CLUSTER_GAP;
 
     painter.galley(
         egui::pos2(

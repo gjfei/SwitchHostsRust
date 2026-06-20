@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${SWITCHHOSTS_ICONS:-/Users/jarven/Desktop/project/self/SwitchHosts/src-tauri/icons}"
-DEST="$ROOT/apps/egui/icons"
+DEST="$ROOT/crates/ui-assets/app-icons"
 
 if [[ ! -d "$SRC" ]]; then
     echo "error: 找不到 SwitchHosts 图标目录: $SRC" >&2

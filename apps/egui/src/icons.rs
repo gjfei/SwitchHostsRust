@@ -1,13 +1,14 @@
-//! Tabler SVG 图标（来自 SwitchHosts 依赖的 @tabler/icons@3.42.0，见 `assets/icons/`）。
+//! Tabler SVG 图标 — egui 绘制层，资源来自 [`ui_assets::icons`]。
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use eframe::egui::load::{Bytes, SizeHint};
+use eframe::egui::load::SizeHint;
 use eframe::egui::load::SizedTexture;
 use eframe::egui::{self, pos2, Color32, ColorImage, Context, Id, Rect, Ui, Vec2};
 use serde_json::Value;
 use switch_hosts_core::manifest_edit::HostsNodeKind;
+pub use ui_assets::icons::Icon;
 
 fn icon_cache_id() -> Id {
     Id::new("swh_icon_cache")
@@ -60,26 +61,12 @@ fn colorize_silhouette(src: &ColorImage, tint: Color32) -> ColorImage {
     }
 }
 
-fn icon_svg_bytes(icon: Icon) -> &'static [u8] {
-    match icon.source() {
-        egui::ImageSource::Bytes { bytes, .. } => match bytes {
-            Bytes::Static(b) => b,
-            Bytes::Shared(_) => {
-                debug_assert!(false, "embedded icons must be static bytes");
-                &[]
-            }
-        },
-        _ => {
-            debug_assert!(false, "embedded icons must be static bytes");
-            &[]
-        }
-    }
-}
-
 fn load_silhouette(icon: Icon, px: u32) -> Arc<ColorImage> {
-    let mut image =
-        egui_extras::image::load_svg_bytes_with_size(icon_svg_bytes(icon), Some(SizeHint::Height(px)))
-            .unwrap_or_else(|e| panic!("failed to rasterize icon {icon:?}: {e}"));
+    let mut image = egui_extras::image::load_svg_bytes_with_size(
+        icon.svg_bytes(),
+        Some(SizeHint::Height(px)),
+    )
+    .unwrap_or_else(|e| panic!("failed to rasterize icon {icon:?}: {e}"));
     white_silhouette(&mut image);
     Arc::new(image)
 }
@@ -125,96 +112,9 @@ fn colored_icon_texture(ctx: &Context, icon: Icon, size: f32, tint: Color32) -> 
     Some(SizedTexture::new(handle.id(), Vec2::splat(size)))
 }
 
-/// 内置 Tabler outline 图标。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Icon {
-    DeviceDesktop,
-    FileText,
-    World,
-    Stack2,
-    Folder,
-    FolderOpen,
-    Trash,
-    TrashX,
-    ArrowLeft,
-    ArrowRight,
-    List,
-    Search,
-    History,
-    Settings,
-    Plus,
-    SidebarLeftCollapse,
-    SidebarLeftExpand,
-    SidebarRightCollapse,
-    SidebarRightExpand,
-    Pencil,
-    Edit,
-    X,
-    ChevronRight,
-    ChevronDown,
-    InfoCircle,
-    Refresh,
-    Message2,
-    Home,
-    Upload,
-    Download,
-    CloudDownload,
-    Adjustments,
-    Logout,
-}
+/// 与 SwitchHosts `ItemIcon` 一致默认 16px。
+pub const DEFAULT_ICON_SIZE: f32 = 16.0;
 
-impl Icon {
-    /// 与 SwitchHosts `ItemIcon` 一致默认 16px。
-    pub const DEFAULT_SIZE: f32 = 16.0;
-
-    pub fn source(self) -> egui::ImageSource<'static> {
-        match self {
-            Self::DeviceDesktop => egui::include_image!("../assets/icons/device-desktop.svg"),
-            Self::FileText => egui::include_image!("../assets/icons/file-text.svg"),
-            Self::World => egui::include_image!("../assets/icons/world.svg"),
-            Self::Stack2 => egui::include_image!("../assets/icons/stack-2.svg"),
-            Self::Folder => egui::include_image!("../assets/icons/folder.svg"),
-            Self::FolderOpen => egui::include_image!("../assets/icons/folder-open.svg"),
-            Self::Trash => egui::include_image!("../assets/icons/trash.svg"),
-            Self::TrashX => egui::include_image!("../assets/icons/trash-x.svg"),
-            Self::ArrowLeft => egui::include_image!("../assets/icons/arrow-left.svg"),
-            Self::ArrowRight => egui::include_image!("../assets/icons/arrow-right.svg"),
-            Self::List => egui::include_image!("../assets/icons/list.svg"),
-            Self::Search => egui::include_image!("../assets/icons/search.svg"),
-            Self::History => egui::include_image!("../assets/icons/history.svg"),
-            Self::Settings => egui::include_image!("../assets/icons/settings.svg"),
-            Self::Plus => egui::include_image!("../assets/icons/plus.svg"),
-            Self::SidebarLeftCollapse => {
-                egui::include_image!("../assets/icons/layout-sidebar-left-collapse.svg")
-            }
-            Self::SidebarLeftExpand => {
-                egui::include_image!("../assets/icons/layout-sidebar-left-expand.svg")
-            }
-            Self::SidebarRightCollapse => {
-                egui::include_image!("../assets/icons/layout-sidebar-right-collapse.svg")
-            }
-            Self::SidebarRightExpand => {
-                egui::include_image!("../assets/icons/layout-sidebar-right-expand.svg")
-            }
-            Self::Pencil => egui::include_image!("../assets/icons/pencil.svg"),
-            Self::Edit => egui::include_image!("../assets/icons/edit.svg"),
-            Self::X => egui::include_image!("../assets/icons/x.svg"),
-            Self::ChevronRight => egui::include_image!("../assets/icons/chevron-right.svg"),
-            Self::ChevronDown => egui::include_image!("../assets/icons/chevron-down.svg"),
-            Self::InfoCircle => egui::include_image!("../assets/icons/info-circle.svg"),
-            Self::Refresh => egui::include_image!("../assets/icons/refresh.svg"),
-            Self::Message2 => egui::include_image!("../assets/icons/message-2.svg"),
-            Self::Home => egui::include_image!("../assets/icons/home.svg"),
-            Self::Upload => egui::include_image!("../assets/icons/upload.svg"),
-            Self::Download => egui::include_image!("../assets/icons/download.svg"),
-            Self::CloudDownload => egui::include_image!("../assets/icons/cloud-download.svg"),
-            Self::Adjustments => egui::include_image!("../assets/icons/adjustments.svg"),
-            Self::Logout => egui::include_image!("../assets/icons/logout.svg"),
-        }
-    }
-}
-
-/// 在布局中显示图标（不可点击）。
 pub fn icon(ui: &mut Ui, icon: Icon, size: f32, tint: Color32) -> egui::Response {
     if let Some(tex) = colored_icon_texture(ui.ctx(), icon, size, tint) {
         ui.add(
@@ -228,7 +128,6 @@ pub fn icon(ui: &mut Ui, icon: Icon, size: f32, tint: Color32) -> egui::Response
     }
 }
 
-/// 可点击图标按钮（对齐 Mantine filled / 带边框样式）。
 pub fn icon_button(ui: &mut Ui, icon: Icon, size: f32, tint: Color32) -> egui::Response {
     const MIN_HIT: f32 = 28.0;
     if let Some(tex) = colored_icon_texture(ui.ctx(), icon, size, tint) {
@@ -243,7 +142,6 @@ pub fn icon_button(ui: &mut Ui, icon: Icon, size: f32, tint: Color32) -> egui::R
     }
 }
 
-/// 无边框图标按钮：默认透明，hover 时显示背景（对齐 TopBar `ActionIcon variant="subtle"`）。
 pub fn subtle_icon_button(
     ui: &mut Ui,
     icon: Icon,
@@ -264,17 +162,19 @@ pub fn subtle_icon_button(
     response
 }
 
-/// 在指定矩形内绘制图标（用于树行等自定义布局）。
 pub fn paint_icon(ui: &Ui, icon: Icon, center: egui::Pos2, size: f32, tint: Color32) {
     let Some(tex) = colored_icon_texture(ui.ctx(), icon, size, tint) else {
         return;
     };
     let rect = Rect::from_center_size(center, Vec2::splat(size));
-    ui.painter()
-        .image(tex.id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+    ui.painter().image(
+        tex.id,
+        rect,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
 }
 
-/// 根据 hosts 类型解析图标。
 pub fn kind_icon(kind: HostsNodeKind) -> Icon {
     match kind {
         HostsNodeKind::Local => Icon::FileText,
@@ -284,7 +184,6 @@ pub fn kind_icon(kind: HostsNodeKind) -> Icon {
     }
 }
 
-/// 根据 manifest 节点解析图标（对齐 `ItemIcon.tsx`）。
 pub fn node_icon(node: &Value, collapsed: bool) -> Icon {
     if node.get("isSys").and_then(|v| v.as_bool()).unwrap_or(false)
         || node.get("is_sys").and_then(|v| v.as_bool()).unwrap_or(false)

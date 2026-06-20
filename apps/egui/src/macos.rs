@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use crate::app_icon;
 use crate::theme::layout;
 
 /// 是否在 `.app` bundle 内运行（Mission Control 图标依赖 bundle 元数据）。
@@ -107,7 +106,7 @@ fn dock_icns_path() -> PathBuf {
         }
     }
 
-    let dev = app_icon::dock_icns_path();
+    let dev = crate::app_icon::dock_icns_path();
     if dev.is_file() {
         return dev;
     }

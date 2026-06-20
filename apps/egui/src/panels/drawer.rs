@@ -227,7 +227,7 @@ pub fn outline_button_with_icon(
         text_color,
         ICON_ROW_LINE_HEIGHT,
     );
-    let content_w = Icon::DEFAULT_SIZE + 8.0 + galley.size().x;
+    let content_w = icons::DEFAULT_ICON_SIZE + 8.0 + galley.size().x;
     let btn_w = (content_w + layout::DRAWER_INPUT_H_PAD * 2.0).max(layout::DRAWER_BTN_MIN_W);
     let (rect, mut response) = ui.allocate_at_least(Vec2::new(btn_w, layout::DRAWER_BTN_H), if enabled {
         Sense::click()
@@ -256,7 +256,7 @@ pub fn outline_button_with_icon(
             rect.center().y,
             rect.left() + layout::DRAWER_INPUT_H_PAD,
             icon,
-            Icon::DEFAULT_SIZE,
+            icons::DEFAULT_ICON_SIZE,
             8.0,
             label,
             ui_font_id(14.0),

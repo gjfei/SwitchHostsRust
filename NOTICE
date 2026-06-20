@@ -22,14 +22,29 @@ You may obtain a copy of the License at
 
 Derived third-party assets in this repository:
 
-- apps/egui/icons/ — application and tray icons copied from SwitchHosts
+- crates/ui-assets/app-icons/ — application and tray icons copied from SwitchHosts
   (src-tauri/icons/), used under Apache-2.0.
+
+================================================================================
+Alibaba PuHuiTi (阿里巴巴普惠体)
+================================================================================
+
+UI font file under crates/ui-assets/assets/fonts/:
+
+- AlibabaPuHuiTi-3-55-Regular.ttf
+
+Copyright Alibaba (China) Co., Ltd. Distributed under the Alibaba PuHuiTi
+font license. Free for commercial use subject to the license terms published at:
+
+    https://fonts.alibabagroup.com/
+
+Obtain or update the font via ./scripts/sync-fonts.sh
 
 ================================================================================
 Tabler Icons
 ================================================================================
 
-UI icons under apps/egui/assets/icons/ are based on Tabler Icons
+UI icons under crates/ui-assets/assets/icons/ are based on Tabler Icons
 (@tabler/icons 3.42.0, https://tabler.io/icons), used by SwitchHosts and
 embedded in this project as SVG.
 

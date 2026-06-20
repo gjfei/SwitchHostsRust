@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/ui-assets",
     "crates/service",
     "crates/cli",
     "crates/xtask",
@@ -46,6 +47,7 @@ tray-icon = "0.19"
 auto-launch = "0.5"
 
 switch-hosts-core = { path = "crates/core", package = "core" }
+ui-assets = { path = "crates/ui-assets" }
 service = { path = "crates/service", default-features = false }
 
 [profile.release]

@@ -9,7 +9,6 @@ use tray_icon::menu::{
 };
 use tray_icon::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-use crate::app_icon;
 use crate::tray::build_tray_menu;
 
 /// 托盘菜单触发的动作。
@@ -126,7 +125,7 @@ pub struct TrayController {
 impl TrayController {
     /// 创建托盘；须在 eframe 事件循环已启动后调用（见 `try_init_tray`）。
     fn try_build(manifest: &Manifest) -> Option<Self> {
-        let icon = app_icon::tray_icon();
+        let icon = crate::app_icon::tray_icon();
         let (menu, ids) = build_native_menu(manifest)?;
         let mut builder = TrayIconBuilder::new()
             .with_tooltip("SwitchHostsRust")

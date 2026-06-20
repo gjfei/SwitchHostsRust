@@ -644,7 +644,7 @@ fn transfer_column(
                                             cy,
                                             rect.left() + 8.0,
                                             icons::kind_icon(*kind),
-                                            Icon::DEFAULT_SIZE,
+                                            icons::DEFAULT_ICON_SIZE,
                                             8.0,
                                             title,
                                             ui_font_id(14.0),

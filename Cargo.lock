@@ -1148,6 +1148,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tray-icon",
+ "ui-assets",
  "webbrowser",
 ]
 
@@ -4534,6 +4535,10 @@ dependencies = [
  "tempfile",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "ui-assets"
+version = "0.1.0"
 
 [[package]]
 name = "unicase"

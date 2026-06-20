@@ -87,7 +87,7 @@ pub struct SwitchHostsApp {
 
 impl SwitchHostsApp {
     pub fn new(cc: &eframe::CreationContext<'_>, paths: AppPaths, target: HostsTarget) -> Self {
-        crate::fonts::setup_cjk_fonts(&cc.egui_ctx);
+        crate::fonts::setup_fonts(&cc.egui_ctx);
 
         let config = AppConfig::load(&paths.config_file);
         let manifest = Manifest::load(&paths).unwrap_or_default();
