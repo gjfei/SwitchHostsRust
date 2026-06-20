@@ -22,18 +22,17 @@ const EDITOR_GUTTER_PAD_RIGHT: f32 = 6.0;
 
 struct EditorMetrics {
     font_id: FontId,
-    row_height: f32,
 }
 
 impl EditorMetrics {
     fn from_ui(ui: &Ui) -> Self {
-        let font_id = FontId::monospace(layout::EDITOR_FONT_SIZE);
-        let row_height = ui.fonts(|fonts| fonts.row_height(&font_id));
-        Self { font_id, row_height }
-    }
-
-    fn content_height(&self, line_count: usize) -> f32 {
-        EDITOR_PAD_Y * 2.0 + line_count as f32 * self.row_height
+        let font_id = ui
+            .style()
+            .text_styles
+            .get(&TextStyle::Monospace)
+            .cloned()
+            .unwrap_or_else(|| FontId::monospace(layout::EDITOR_FONT_SIZE));
+        Self { font_id }
     }
 
     /// 按最大行号位数计算 gutter 宽度（对齐 CodeMirror 自动 gutter）。
@@ -49,6 +48,113 @@ impl EditorMetrics {
     }
 }
 
+/// 最长行的像素宽度（用于横向滚动，不换行）。
+fn editor_content_width(ui: &Ui, text: &str, metrics: &EditorMetrics) -> f32 {
+    const RIGHT_MARGIN: f32 = 8.0;
+    let t = theme::app(ui.ctx());
+    let mut max_w = 0.0f32;
+    for line in text.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let galley = ui.fonts(|fonts| fonts.layout_job(build_syntax_job(line, metrics, &t)));
+        max_w = max_w.max(galley.size().x);
+    }
+    max_w + RIGHT_MARGIN
+}
+
+fn layout_hosts_galley(ui: &Ui, text: &str, metrics: &EditorMetrics) -> std::sync::Arc<egui::Galley> {
+    let t = theme::app(ui.ctx());
+    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, metrics, &t)))
+}
+
+fn galley_content_height(galley: &egui::Galley) -> f32 {
+    EDITOR_PAD_Y * 2.0 + galley.size().y
+}
+
+fn editor_line_count_estimate(text: &str) -> usize {
+    if text.is_empty() {
+        1
+    } else {
+        text.chars().filter(|&c| c == '\n').count() + 1
+    }
+}
+
+fn draw_editor_body(
+    ui: &mut Ui,
+    metrics: &EditorMetrics,
+    text: &mut String,
+    viewport: Vec2,
+    bg: Color32,
+    read_only: bool,
+    editor_id: Id,
+    gutter_line: &mut Option<usize>,
+    pending_selection: &mut Option<(usize, usize)>,
+) {
+    let gutter_w = metrics.gutter_width(ui, editor_line_count_estimate(text));
+    let code_viewport_w = (viewport.x - gutter_w).max(0.0);
+    let code_min_w = editor_content_width(ui, text, metrics).max(code_viewport_w);
+
+    egui::ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        .id_salt(editor_id.with("vscroll"))
+        .show(ui, |ui| {
+            let galley = layout_hosts_galley(ui, text, metrics);
+            let line_count = galley.rows.len().max(1);
+            let gutter_w = metrics.gutter_width(ui, line_count);
+            let content_h = galley_content_height(&galley);
+            let total_w = gutter_w + code_min_w;
+
+            let (body_rect, _) =
+                ui.allocate_exact_size(Vec2::new(total_w, content_h), Sense::hover());
+
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.set_min_size(Vec2::new(total_w, content_h));
+                    ui.spacing_mut().item_spacing.x = 0.0;
+
+                    let gutter_w = metrics.gutter_width(ui, line_count);
+                    ui.allocate_new_ui(
+                        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            Vec2::new(gutter_w, content_h),
+                        )),
+                        |ui| {
+                            draw_gutter(
+                                ui,
+                                metrics,
+                                &galley,
+                                content_h,
+                                bg,
+                                read_only,
+                                gutter_line,
+                            );
+                        },
+                    );
+
+                    egui::ScrollArea::horizontal()
+                        .auto_shrink([false; 2])
+                        .id_salt(editor_id.with("hscroll"))
+                        .show(ui, |ui| {
+                            ui.set_min_width(code_min_w);
+                            ui.set_min_height(content_h);
+                            draw_code_area(
+                                ui,
+                                metrics,
+                                text,
+                                read_only,
+                                line_count,
+                                content_h,
+                                editor_id,
+                                *gutter_line,
+                                pending_selection,
+                            );
+                        });
+                });
+            });
+        });
+}
+
 /// 只读 hosts 预览（对齐 `HostsViewer`）。
 pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
     let t = theme::app(ui.ctx());
@@ -56,7 +162,6 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
     let full_rect = ui.max_rect();
     ui.painter().rect_filled(full_rect, 0.0, bg);
 
-    let line_count = text.lines().count().max(1);
     let editor_id = Id::new("hosts_readonly_viewer");
 
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(full_rect), |ui| {
@@ -67,40 +172,19 @@ pub fn draw_readonly_hosts_viewer(ui: &mut Ui, text: &mut String) {
             .show(ui, |ui| {
                 let metrics = EditorMetrics::from_ui(ui);
                 let inner = ui.available_size();
-                let content_h = metrics.content_height(line_count);
-                let body_h = inner.y.max(content_h);
-
-                egui::ScrollArea::both()
-                    .auto_shrink([false; 2])
-                    .show(ui, |ui| {
-                        ui.set_min_size(Vec2::new(inner.x, body_h));
-                        ui.horizontal_top(|ui| {
-                            ui.set_min_height(body_h);
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            let mut gutter_line = None;
-                            draw_gutter(
-                                ui,
-                                &metrics,
-                                line_count,
-                                body_h,
-                                bg,
-                                true,
-                                &mut gutter_line,
-                            );
-                            let mut no_selection = None;
-                            draw_code_area(
-                                ui,
-                                &metrics,
-                                text,
-                                true,
-                                line_count,
-                                body_h,
-                                editor_id,
-                                None,
-                                &mut no_selection,
-                            );
-                        });
-                    });
+                let mut gutter_line = None;
+                let mut no_selection = None;
+                draw_editor_body(
+                    ui,
+                    &metrics,
+                    text,
+                    inner,
+                    bg,
+                    true,
+                    editor_id,
+                    &mut gutter_line,
+                    &mut no_selection,
+                );
             });
     });
 }
@@ -154,7 +238,6 @@ pub fn draw_editor_panel(
         return;
     }
 
-    let line_count = text.lines().count().max(1);
     let editor_id = Id::new(EDITOR_WIDGET_ID)
         .with(selected_id.unwrap_or("none"))
         .with(editor_revision);
@@ -167,40 +250,18 @@ pub fn draw_editor_panel(
             .show(ui, |ui| {
                 let metrics = EditorMetrics::from_ui(ui);
                 let inner = ui.available_size();
-                let content_h = metrics.content_height(line_count);
-                let body_h = inner.y.max(content_h);
-
-                let mut gutter_line: Option<usize> = None;
-
-                egui::ScrollArea::both()
-                    .auto_shrink([false; 2])
-                    .show(ui, |ui| {
-                        ui.set_min_size(Vec2::new(inner.x, body_h));
-                        ui.horizontal_top(|ui| {
-                            ui.set_min_height(body_h);
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            draw_gutter(
-                                ui,
-                                &metrics,
-                                line_count,
-                                body_h,
-                                bg,
-                                read_only,
-                                &mut gutter_line,
-                            );
-                            draw_code_area(
-                                ui,
-                                &metrics,
-                                text,
-                                read_only,
-                                line_count,
-                                body_h,
-                                editor_id,
-                                gutter_line,
-                                pending_selection,
-                            );
-                        });
-                    });
+                let mut gutter_line = None;
+                draw_editor_body(
+                    ui,
+                    &metrics,
+                    text,
+                    inner,
+                    bg,
+                    read_only,
+                    editor_id,
+                    &mut gutter_line,
+                    pending_selection,
+                );
             });
     });
 }
@@ -208,25 +269,25 @@ pub fn draw_editor_panel(
 fn draw_gutter(
     ui: &mut Ui,
     metrics: &EditorMetrics,
-    line_count: usize,
-    body_height: f32,
+    galley: &egui::Galley,
+    content_height: f32,
     bg: Color32,
     read_only: bool,
     gutter_line: &mut Option<usize>,
 ) {
+    let line_count = galley.rows.len().max(1);
     let gutter_width = metrics.gutter_width(ui, line_count);
-    let gutter_height = body_height.max(metrics.content_height(line_count));
     let (gutter_rect, _) = ui.allocate_exact_size(
-        Vec2::new(gutter_width, gutter_height),
+        Vec2::new(gutter_width, content_height),
         Sense::hover(),
     );
     ui.painter().rect_filled(gutter_rect, 0.0, bg);
 
-    for line_idx in 0..line_count {
-        let line_top = gutter_rect.top() + EDITOR_PAD_Y + line_idx as f32 * metrics.row_height;
+    for (line_idx, row) in galley.rows.iter().enumerate() {
+        let line_top = gutter_rect.top() + EDITOR_PAD_Y + row.rect.top();
         let line_rect = egui::Rect::from_min_max(
             egui::pos2(gutter_rect.left(), line_top),
-            egui::pos2(gutter_rect.right(), line_top + metrics.row_height),
+            egui::pos2(gutter_rect.right(), line_top + row.rect.height()),
         );
         let response = ui.interact(
             line_rect,
@@ -239,8 +300,9 @@ fn draw_gutter(
         );
         if ui.is_rect_visible(line_rect) {
             let t = theme::app(ui.ctx());
+            let line_center_y = gutter_rect.top() + EDITOR_PAD_Y + row.rect.center().y;
             ui.painter().text(
-                egui::pos2(gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT, line_rect.center().y),
+                egui::pos2(gutter_rect.right() - EDITOR_GUTTER_PAD_RIGHT, line_center_y),
                 egui::Align2::RIGHT_CENTER,
                 format!("{}", line_idx + 1),
                 metrics.font_id.clone(),
@@ -259,7 +321,7 @@ fn draw_code_area(
     text: &mut String,
     read_only: bool,
     line_count: usize,
-    body_height: f32,
+    content_height: f32,
     editor_id: Id,
     gutter_line: Option<usize>,
     pending_selection: &mut Option<(usize, usize)>,
@@ -272,7 +334,7 @@ fn draw_code_area(
             &mut display,
             true,
             line_count,
-            body_height,
+            content_height,
             editor_id,
             gutter_line,
             pending_selection,
@@ -286,7 +348,7 @@ fn draw_code_area(
         text,
         false,
         line_count,
-        body_height,
+        content_height,
         editor_id,
         gutter_line,
         pending_selection,
@@ -299,17 +361,12 @@ fn draw_text_edit(
     text: &mut String,
     read_only: bool,
     line_count: usize,
-    body_height: f32,
+    content_height: f32,
     editor_id: Id,
     gutter_line: Option<usize>,
     pending_selection: &mut Option<(usize, usize)>,
 ) {
-    let viewport_rows =
-        ((body_height - EDITOR_PAD_Y * 2.0) / metrics.row_height).floor() as usize;
-    let edit_rows = line_count.max(viewport_rows.max(1));
-
-    ui.set_min_width(ui.available_width());
-    ui.set_min_height(body_height);
+    let content_w = editor_content_width(ui, text, metrics).max(ui.available_width());
 
     let mut layouter = hosts_syntax_layouter;
     let mut edit = egui::TextEdit::multiline(text)
@@ -318,7 +375,9 @@ fn draw_text_edit(
         .font(TextStyle::Monospace)
         .frame(false)
         .desired_width(f32::INFINITY)
-        .desired_rows(edit_rows)
+        .desired_rows(line_count)
+        .vertical_align(egui::Align::TOP)
+        .horizontal_align(egui::Align::LEFT)
         .margin(egui::Margin {
             left: 0,
             right: 8,
@@ -331,7 +390,13 @@ fn draw_text_edit(
         edit = edit.interactive(false);
     }
 
-    let output = edit.show(ui);
+    let output = ui
+        .allocate_ui_with_layout(
+            Vec2::new(content_w, content_height),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| edit.show(ui),
+        )
+        .inner;
     let cursor = output
         .cursor_range
         .as_ref()
@@ -414,15 +479,14 @@ fn cursor_char_range(range: &egui::text::CursorRange) -> (usize, usize) {
     (min.ccursor.index, max.ccursor.index)
 }
 
-fn hosts_syntax_layouter(ui: &Ui, text: &str, wrap_width: f32) -> std::sync::Arc<egui::Galley> {
+fn hosts_syntax_layouter(ui: &Ui, text: &str, _wrap_width: f32) -> std::sync::Arc<egui::Galley> {
     let metrics = EditorMetrics::from_ui(ui);
     let t = theme::app(ui.ctx());
-    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, wrap_width, &metrics, &t)))
+    ui.fonts(|fonts| fonts.layout_job(build_syntax_job(text, &metrics, &t)))
 }
 
-fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics, t: &theme::AppTheme) -> LayoutJob {
+fn build_syntax_job(text: &str, metrics: &EditorMetrics, t: &theme::AppTheme) -> LayoutJob {
     let font_id = metrics.font_id.clone();
-    let row_height = metrics.row_height;
     let mut job = LayoutJob::default();
 
     for line in text.split_inclusive('\n') {
@@ -430,54 +494,36 @@ fn build_syntax_job(text: &str, wrap_width: f32, metrics: &EditorMetrics, t: &th
 
         if body.is_empty() {
             if line.ends_with('\n') {
-                job.append(
-                    "\n",
-                    0.0,
-                    line_format(font_id.clone(), t.editor_text, row_height),
-                );
+                job.append("\n", 0.0, line_format(font_id.clone(), t.editor_text));
             }
             continue;
         }
 
         if is_hosts_comment_line(body) {
-            append_line_text(&mut job, body, t.editor_comment, &font_id, row_height);
+            append_line_text(&mut job, body, t.editor_comment, &font_id);
         } else if !is_valid_hosts_line(body) {
-            append_line_text(&mut job, body, t.editor_error, &font_id, row_height);
+            append_line_text(&mut job, body, t.editor_error, &font_id);
         } else {
             for (i, seg) in parse_line_segments(body).iter().enumerate() {
                 if i > 0 {
-                    job.append(
-                        " ",
-                        0.0,
-                        line_format(font_id.clone(), t.editor_text, row_height),
-                    );
+                    job.append(" ", 0.0, line_format(font_id.clone(), t.editor_text));
                 }
                 let (color, seg_font) = token_style(seg.kind, &font_id, t);
-                job.append(
-                    &seg.text,
-                    0.0,
-                    line_format(seg_font, color, row_height),
-                );
+                job.append(&seg.text, 0.0, line_format(seg_font, color));
             }
         }
 
         if line.ends_with('\n') {
-            job.append(
-                "\n",
-                0.0,
-                line_format(font_id.clone(), t.editor_text, row_height),
-            );
+            job.append("\n", 0.0, line_format(font_id.clone(), t.editor_text));
         }
     }
 
-    job.wrap.max_width = wrap_width;
+    job.wrap.max_width = f32::INFINITY;
     job
 }
 
-fn line_format(font_id: FontId, color: Color32, row_height: f32) -> TextFormat {
-    let mut fmt = TextFormat::simple(font_id, color);
-    fmt.line_height = Some(row_height);
-    fmt
+fn line_format(font_id: FontId, color: Color32) -> TextFormat {
+    TextFormat::simple(font_id, color)
 }
 
 fn append_line_text(
@@ -485,13 +531,8 @@ fn append_line_text(
     text: &str,
     color: Color32,
     font_id: &FontId,
-    row_height: f32,
 ) {
-    job.append(
-        text,
-        0.0,
-        line_format(font_id.clone(), color, row_height),
-    );
+    job.append(text, 0.0, line_format(font_id.clone(), color));
 }
 
 fn token_style(kind: TokenKind, base: &FontId, t: &theme::AppTheme) -> (Color32, FontId) {
