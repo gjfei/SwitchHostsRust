@@ -124,15 +124,56 @@ jobs:
     needs: [prepare, release-macos, release-windows]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate release notes from commits between tags
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="${{ github.ref_name }}"
+          git fetch --tags --force
+
+          if [[ "$current" =~ ^v[0-9] ]]; then
+            prev=$(git tag -l 'v*' --sort=-v:refname | grep -Fvx "$current" | head -1 || true)
+          elif [[ "$current" =~ ^(.+)-v[0-9] ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            prev=$(git tag -l "${prefix}-v*" --sort=-v:refname | grep -Fvx "$current" | head -1 || true)
+          else
+            prev=""
+          fi
+
+          if [ -n "$prev" ]; then
+            echo "Release notes: ${prev}..${current}"
+            body=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$current" \
+              -f previous_tag_name="$prev" \
+              -f target_commitish="$current" \
+              --jq .body)
+          else
+            echo "No previous tag; listing commits"
+            body="$(printf '## What'\''s Changed\n\n%s' "$(git log --pretty=format:'- %s (%h)' --no-merges)")"
+          fi
+
+          {
+            echo 'body<<EOF'
+            printf '%s\n' "$body"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ needs.prepare.outputs.release_name }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: artifacts/**/*
