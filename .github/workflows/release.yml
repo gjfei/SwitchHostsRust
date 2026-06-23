@@ -1,0 +1,138 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "*-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --all-features
+
+  prepare:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      apps: ${{ steps.meta.outputs.apps }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Parse release tag
+        id: meta
+        run: cargo run -p xtask -- release-prepare --tag "${{ github.ref_name }}" --dry-run
+
+  release-macos:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply version from tag
+        run: cargo run -p xtask -- release-prepare --tag "${{ github.ref_name }}"
+
+      - name: Package .dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps="${{ needs.prepare.outputs.apps }}"
+          if [ -n "$apps" ]; then
+            IFS=',' read -ra APP_LIST <<< "$apps"
+            args=()
+            for app in "${APP_LIST[@]}"; do
+              args+=(--app "$app")
+            done
+            cargo run -p xtask -- package-macos "${args[@]}"
+          else
+            cargo run -p xtask -- package-macos
+          fi
+
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p release-artifacts
+          shopt -s nullglob
+          for dmg in dist/*.dmg; do
+            base="$(basename "$dmg" .dmg)"
+            cp "$dmg" "release-artifacts/${base}-${version}-macos.dmg"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  release-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply version from tag
+        run: cargo run -p xtask -- release-prepare --tag "${{ github.ref_name }}"
+
+      - name: Package NSIS installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps="${{ needs.prepare.outputs.apps }}"
+          if [ -n "$apps" ]; then
+            IFS=',' read -ra APP_LIST <<< "$apps"
+            args=()
+            for app in "${APP_LIST[@]}"; do
+              args+=(--app "$app")
+            done
+            cargo run -p xtask -- package-windows "${args[@]}"
+          else
+            cargo run -p xtask -- package-windows
+          fi
+
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p release-artifacts
+          shopt -s nullglob
+          for exe in dist/*-setup.exe; do
+            stem="$(basename "$exe" -setup.exe)"
+            product="$(echo "$stem" | cut -d_ -f1)"
+            cp "$exe" "release-artifacts/${product}-${version}-windows-setup.exe"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  github-release:
+    needs: [prepare, release-macos, release-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          generate_release_notes: true
+          files: artifacts/**/*

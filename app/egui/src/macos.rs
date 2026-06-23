@@ -64,7 +64,7 @@ pub fn configure_macos_app() -> bool {
 
     if !running_in_app_bundle() {
         tracing::debug!(
-            "未在 .app 内运行，Mission Control 可能不显示图标；请用 ./scripts/run-gui-macos.sh"
+            "未在 .app 内运行，Mission Control 可能不显示图标；请用 cargo run-gui-macos"
         );
     }
 

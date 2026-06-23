@@ -48,10 +48,11 @@ cargo build --release -p egui-app
 # 产物: target/release/switch-hosts-rust-gui
 ```
 
-或使用 macOS 脚本：
+或使用 xtask：
 
 ```bash
-./scripts/package-macos.sh
+cargo package-macos
+cargo package-macos --app egui-app
 ```
 
 ### 数据目录
@@ -60,7 +61,7 @@ cargo build --release -p egui-app
 
 ### 后续
 
-- macOS: 可使用 `cargo install cargo-bundle` 生成 `.app`，再配合 `create-dmg`
+- macOS: `cargo package-macos` 默认生成 `.app` + `.dmg`；多 app 见 `Packager.toml` `[[apps]]`
 - Windows: 使用 WiX/NSIS 打包 `switch-hosts-rust-gui.exe`
 - Linux: egui 需独立 gtk 线程初始化托盘（见 tray-icon 官方 egui 示例）；`.deb` / AppImage 待集成
 - macOS `hide_dock_icon`：需额外 Objective-C 集成，暂未实现

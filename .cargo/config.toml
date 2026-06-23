@@ -1,8 +1,14 @@
 [alias]
 # 单次运行：应用退出后终端回到 shell
-dev-gui = ["run", "-p", "egui-app"]
+dev-gui = ["run", "-p", "xtask", "--", "dev-gui"]
 # 热重载：监听变更自动 run；应用退出后 watch 仍驻留，需 Ctrl+C 结束
-dev-gui-watch = ["watch", "-x", "run -p egui-app"]
-# macOS 发布：.app → dist/；加 DMG 见 package-dmg
+dev-gui-watch = ["run", "-p", "xtask", "--", "dev-gui-watch"]
+# macOS 发布：.dmg → dist/
 package-macos = ["run", "-p", "xtask", "--", "package-macos"]
+# 同 package-macos（保留别名）
 package-dmg = ["run", "-p", "xtask", "--", "package-dmg"]
+package-windows = ["run", "-p", "xtask", "--", "package-windows"]
+# macOS：通过 .app 启动（Mission Control / Dock 图标完整）
+run-gui-macos = ["run", "-p", "xtask", "--", "run-gui-macos"]
+sync-fonts = ["run", "-p", "xtask", "--", "sync-fonts"]
+sync-icons = ["run", "-p", "xtask", "--", "sync-icons"]

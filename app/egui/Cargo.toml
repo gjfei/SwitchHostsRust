@@ -9,26 +9,7 @@ description = "SwitchHostsRust egui desktop app"
 publish = false
 build = "build.rs"
 
-[package.metadata.bundle]
-name = "SwitchHostsRust"
-identifier = "app.switchhostsrust"
-icon = [
-    "crates/ui-assets/app-icons/icon.icns",
-    "crates/ui-assets/app-icons/32x32.png",
-    "crates/ui-assets/app-icons/128x128.png",
-    "crates/ui-assets/app-icons/128x128@2x.png",
-]
-copyright = "Copyright (c) switch-hosts-rust contributors"
-category = "Developer Tool"
-short_description = "Manage and switch between multiple hosts configurations"
-long_description = """
-SwitchHostsRust is an unofficial, community-maintained Rust reimplementation
-inspired by SwitchHosts. It is not affiliated with or endorsed by the
-SwitchHosts project. Manage and switch between multiple hosts file
-configurations on macOS, Windows, and Linux.
-"""
-osx_minimum_system_version = "10.15"
-# Security 由 core/build.rs 动态链接系统框架，勿写入 osx_frameworks（cargo-bundle 会整包复制 ~6MB）
+# macOS .app 打包见仓库根目录 Packager.toml（cargo-packager）
 
 [lib]
 name = "egui_app"
@@ -47,9 +28,9 @@ chrono.workspace = true
 tokio.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["rustls"] }
 service = { workspace = true, default-features = false, features = ["client", "api"] }
-eframe.workspace = true
-egui.workspace = true
-egui_extras.workspace = true
+eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.34"
+egui_extras = { version = "0.34", features = ["svg"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde_json.workspace = true

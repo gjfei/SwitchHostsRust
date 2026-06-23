@@ -33,32 +33,62 @@ cargo run -p egui-app -- --system                  # 写入系统 /etc/hosts
 cargo run --release -p egui-app                    # Release 默认写入系统 hosts
 ```
 
-### macOS 封装 `.app`
+### macOS 封装 `.dmg`
 
-依赖 [cargo-bundle](https://github.com/burtonageo/cargo-bundle)，配置见 `apps/egui/Cargo.toml` 的 `[package.metadata.bundle]`。
+使用 [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)，仅打包 `app/` 下的 crate，配置见 `Packager.toml` 的 `[[apps]]`。
 
 ```bash
-./scripts/package-macos.sh
-# 产物: dist/SwitchHostsRust.app
-#       target/release/bundle/osx/SwitchHostsRust.app
+cargo package-macos
+# 产物: dist/SwitchHostsRust.dmg
 
-open dist/SwitchHostsRust.app
+# 仅打包 GUI
+cargo package-macos --app egui-app
+
+# 仅 .app（开发调试，写入 target/packager/）
+cargo package-macos --app-only
 ```
 
-可选生成 DMG：
+macOS 开发时若需 Mission Control / Dock 正确图标：
 
 ```bash
-hdiutil create -volname SwitchHostsRust \
-  -srcfolder dist/SwitchHostsRust.app \
-  -ov -format UDZO dist/SwitchHostsRust.dmg
+cargo run-gui-macos
 ```
 
-或手动：
+### Windows 封装 NSIS 安装包
+
+在 Windows 上运行（cargo-packager 会自动下载 NSIS）：
 
 ```bash
-cargo install cargo-bundle --locked   # 首次
-cargo bundle --release -p egui-app
-open target/release/bundle/osx/SwitchHostsRust.app
+cargo package-windows
+# 产物: dist/SwitchHostsRust_<version>_<arch>-setup.exe
+```
+
+### 发布
+
+推送 tag 后由 GitHub Actions（`.github/workflows/release.yml`）自动更新版本并创建 Release（macOS `.dmg` + Windows NSIS 安装包）：
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+
+# 仅发布单个 app
+git tag egui-app-v0.2.0
+git push origin egui-app-v0.2.0
+```
+
+Tag 格式：
+
+| Tag | 作用 |
+|-----|------|
+| `v0.2.0` | 打包全部 `app/` 下 app |
+| `egui-app-v0.2.0` | 仅打包 `egui-app` |
+
+本地预检：
+
+```bash
+cargo run -p xtask -- release-prepare --tag v0.2.0 --dry-run
+cargo run -p xtask -- release-prepare --tag v0.2.0
+cargo run -p xtask -- package-macos
 ```
 
 ## Crates
@@ -68,7 +98,7 @@ open target/release/bundle/osx/SwitchHostsRust.app
 | `core` | 存储、切换、hosts 写入、查找、导入导出 |
 | `service` | HTTP 客户端、本地 API :50761、定时刷新 |
 | `cli` | 命令行工具 |
-| `apps/egui` | 桌面 GUI |
+| `app/egui` | 桌面 GUI |
 
 ## 许可证与致谢
 
@@ -77,7 +107,7 @@ open target/release/bundle/osx/SwitchHostsRust.app
 | 组件 | 许可 | 说明 |
 |------|------|------|
 | 本项目源码 | Apache-2.0 | 见 [LICENSE](LICENSE) |
-| [SwitchHosts](https://github.com/oldj/SwitchHosts) | Apache-2.0 | 功能参考；`apps/egui/icons/` 应用图标来自原版 |
-| [Tabler Icons](https://tabler.io/icons) | MIT | `apps/egui/assets/icons/` UI 图标（v3.42.0） |
+| [SwitchHosts](https://github.com/oldj/SwitchHosts) | Apache-2.0 | 功能参考；`crates/ui-assets/app-icons/` 应用图标来自原版 |
+| [Tabler Icons](https://tabler.io/icons) | MIT | `crates/ui-assets/assets/icons/` UI 图标（v3.42.0） |
 
-与原版 SwitchHosts 的数据目录（`~/.SwitchHosts`）相互独立；导入/导出格式在 v5 备份 JSON 上尽量兼容，但不保证与官方客户端完全一致。
+与原版 SwitchHosts 的数据目录（`~/.SwitchHosts`）相互独立；导入兼容 v3/v4/v5 备份 JSON，导出为 v5 格式。

@@ -1,4 +1,4 @@
-.PHONY: dev-gui dev-gui-watch run-gui run-gui-macos test package-dmg
+.PHONY: dev-gui dev-gui-watch run-gui run-gui-macos test package-dmg package-gui sync-fonts sync-icons
 
 # 单次运行 GUI；退出后终端回到 shell（推荐日常调试）
 dev-gui:
@@ -14,11 +14,21 @@ run-gui:
 
 # macOS：通过 .app 启动（Mission Control / Dock 图标完整）
 run-gui-macos:
-	./scripts/run-gui-macos.sh
+	cargo run-gui-macos
 
 test:
 	cargo test --workspace
 
-# macOS：Release .app + DMG → dist/SwitchHostsRust.dmg
+# macOS：Release DMG → dist/
 package-dmg:
-	./scripts/package-macos.sh --dmg
+	cargo package-dmg
+
+# 仅 GUI
+package-gui:
+	cargo package-macos -- --app egui-app
+
+sync-fonts:
+	cargo sync-fonts
+
+sync-icons:
+	cargo sync-icons

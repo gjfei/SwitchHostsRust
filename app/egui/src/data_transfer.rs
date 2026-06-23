@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use chrono::Local;
 use rfd::FileDialog;
 use switch_hosts_core::import_export::{
-    export_to_file, import_backup_bytes, read_file_with_limit, ERR_INVALID_DATA, ERR_PARSE,
+    export_to_file, import_backup_bytes, read_file_with_limit, ERR_INVALID_DATA,
+    ERR_INVALID_DATA_KEY, ERR_INVALID_V3_DATA, ERR_NEW_VERSION, ERR_PARSE,
     MAX_IMPORT_BACKUP_BYTES,
 };
 use switch_hosts_core::storage::config::AppConfig;
@@ -37,7 +38,10 @@ pub enum ImportResult {
 pub fn import_error_message(code: &str) -> String {
     match code {
         ERR_PARSE => "无法解析备份文件，请确认是有效的 JSON 格式。".into(),
-        ERR_INVALID_DATA => "无效的 v5 备份数据。".into(),
+        ERR_INVALID_DATA => "无效的备份数据。".into(),
+        ERR_INVALID_V3_DATA => "无效的 v3 备份数据。".into(),
+        ERR_INVALID_DATA_KEY => "无效的 v4 备份数据（缺少 data 字段）。".into(),
+        ERR_NEW_VERSION => "备份版本过新，请升级 SwitchHostsRust。".into(),
         other if other.starts_with("error_") => format!("下载失败（HTTP {other}）。"),
         other => format!("导入失败 [{other}]。"),
     }

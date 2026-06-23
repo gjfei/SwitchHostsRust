@@ -1,12 +1,21 @@
 name: build
 
+# 日常 CI：先跑测试，通过后再三平台 release 编译
 on:
   push:
     branches: [main, master]
   pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --all-features
+
   build:
+    needs: test
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]

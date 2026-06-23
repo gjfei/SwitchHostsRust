@@ -1,0 +1,37 @@
+# 打包配置（cargo-packager，由 xtask 读取）
+# macOS: .dmg；Windows: NSIS 安装包
+
+out-dir = "dist"
+category = "DeveloperTool"
+copyright = "Copyright (c) switch-hosts-rust contributors"
+
+[macos]
+minimum-system-version = "10.15"
+formats = ["dmg"]
+
+[windows]
+formats = ["nsis"]
+
+[dmg]
+background = "crates/xtask/assets/dmg/background.png"
+
+[[apps]]
+name = "egui-app"
+product-name = "SwitchHostsRust"
+cargo-package = "egui-app"
+bin = "switch-hosts-rust-gui"
+identifier = "app.switchhostsrust"
+description = "Manage and switch between multiple hosts configurations"
+long-description = """
+SwitchHostsRust is an unofficial, community-maintained Rust reimplementation
+inspired by SwitchHosts. It is not affiliated with or endorsed by the
+SwitchHosts project. Manage and switch between multiple hosts file
+configurations on macOS, Windows, and Linux.
+"""
+icons = [
+    "crates/ui-assets/app-icons/icon.icns",
+    "crates/ui-assets/app-icons/icon.ico",
+    "crates/ui-assets/app-icons/32x32.png",
+    "crates/ui-assets/app-icons/128x128.png",
+    "crates/ui-assets/app-icons/128x128@2x.png",
+]

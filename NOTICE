@@ -38,7 +38,7 @@ font license. Free for commercial use subject to the license terms published at:
 
     https://fonts.alibabagroup.com/
 
-Obtain or update the font via ./scripts/sync-fonts.sh
+Obtain or update the font via `cargo sync-fonts`
 
 ================================================================================
 Tabler Icons

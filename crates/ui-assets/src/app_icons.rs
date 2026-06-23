@@ -1,4 +1,4 @@
-//! 应用与托盘位图（SwitchHosts `src-tauri/icons/` 副本，见 `scripts/sync-icons.sh`）。
+//! 应用与托盘位图（SwitchHosts `src-tauri/icons/` 副本，见 `cargo sync-icons`）。
 
 use std::path::PathBuf;
 

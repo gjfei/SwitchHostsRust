@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use switch_hosts_core::hosts_apply::elevation::SystemElevation;
 use switch_hosts_core::hosts_apply::pipeline::ApplyPipeline;
 use switch_hosts_core::hosts_apply::target::HostsTarget;
-use switch_hosts_core::import_export::{export_v5_backup, import_from_directory, import_v5_backup};
+use switch_hosts_core::import_export::{
+    export_v5_backup, import_backup_bytes, import_from_directory,
+};
+use serde_json::json;
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::manifest::{flatten_nodes, Manifest};
 use switch_hosts_core::storage::paths::AppPaths;
@@ -58,10 +61,13 @@ pub fn export_backup(paths: &AppPaths) -> Result<()> {
 
 pub fn import_backup(paths: &AppPaths, file: &std::path::Path) -> Result<()> {
     let bytes = fs::read(file).with_context(|| format!("read {}", file.display()))?;
-    let backup: serde_json::Value = serde_json::from_slice(&bytes)?;
-    let manifest = import_v5_backup(paths, &backup)?;
-    manifest.save(paths)?;
-    Ok(())
+    match import_backup_bytes(&bytes, paths)? {
+        v if v == json!(true) => Ok(()),
+        v => {
+            let code = v.as_str().unwrap_or("import failed");
+            anyhow::bail!("import failed: {code}")
+        }
+    }
 }
 
 pub fn import_dir(paths: &AppPaths, source: &std::path::Path) -> Result<()> {

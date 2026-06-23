@@ -17,6 +17,9 @@ pub const BACKUP_SCHEMA_VERSION: u32 = 1;
 
 pub const ERR_PARSE: &str = "parse_error";
 pub const ERR_INVALID_DATA: &str = "invalid_data";
+pub const ERR_NEW_VERSION: &str = "new_version";
+pub const ERR_INVALID_DATA_KEY: &str = "invalid_data_key";
+pub const ERR_INVALID_V3_DATA: &str = "invalid_v3_data";
 pub const MAX_IMPORT_BACKUP_BYTES: usize = 64 * 1024 * 1024;
 
 /// Legacy CLI / stdout export shape (`list` + `content`).
@@ -82,6 +85,9 @@ pub fn export_to_file(dest: &Path, paths: &AppPaths) -> Result<(), StorageError>
 }
 
 /// Import backup bytes. Soft failures return `Ok(Value::String(error_code))`.
+///
+/// Accepts SwitchHosts v3 (`version[0] === 3`), v4 (`version[0] === 4`), and v5
+/// (`format === "switchhosts-backup"`) backup JSON.
 pub fn import_backup_bytes(bytes: &[u8], paths: &AppPaths) -> Result<Value, StorageError> {
     let data: Value = match serde_json::from_slice(bytes) {
         Ok(v) => v,
@@ -92,16 +98,26 @@ pub fn import_backup_bytes(bytes: &[u8], paths: &AppPaths) -> Result<Value, Stor
         return Ok(json!(ERR_INVALID_DATA));
     }
 
-    if data.get("format").and_then(Value::as_str) != Some(BACKUP_FORMAT) {
+    if data.get("format").and_then(Value::as_str) == Some(BACKUP_FORMAT) {
+        if data.get("manifest").is_some() {
+            return import_switchhosts_v5(&data, paths);
+        }
+        if data.get("list").is_some() {
+            return import_legacy_v5(&data, paths);
+        }
         return Ok(json!(ERR_INVALID_DATA));
     }
 
-    if data.get("manifest").is_some() {
-        import_switchhosts_v5(&data, paths)
-    } else if data.get("list").is_some() {
-        import_legacy_v5(&data, paths)
-    } else {
-        Ok(json!(ERR_INVALID_DATA))
+    let Some(version) = data.get("version").and_then(Value::as_array) else {
+        return Ok(json!(ERR_INVALID_DATA));
+    };
+    let major = version.first().and_then(Value::as_u64).unwrap_or(0);
+
+    match major {
+        3 => import_v3(&data, paths),
+        4 => import_v4(&data, paths),
+        n if n > 4 => Ok(json!(ERR_NEW_VERSION)),
+        _ => Ok(json!(ERR_INVALID_DATA)),
     }
 }
 
@@ -146,6 +162,153 @@ pub fn import_v5_backup(paths: &AppPaths, backup: &Value) -> Result<Manifest, St
             ..Default::default()
         })
     }
+}
+
+fn import_v3(data: &Value, paths: &AppPaths) -> Result<Value, StorageError> {
+    let Some(list) = data.get("list").and_then(Value::as_array) else {
+        return Ok(json!(ERR_INVALID_V3_DATA));
+    };
+
+    paths.ensure_layout()?;
+
+    let mut converted = Vec::with_capacity(list.len());
+    for node in list {
+        converted.push(convert_v3_node(node, paths)?);
+    }
+
+    Trashcan::default().save(&paths.trashcan_file)?;
+    Manifest {
+        root: converted,
+        ..Default::default()
+    }
+    .save(paths)?;
+
+    Ok(json!(true))
+}
+
+fn convert_v3_node(node: &Value, paths: &AppPaths) -> Result<Value, StorageError> {
+    let Some(obj) = node.as_object() else {
+        return Ok(node.clone());
+    };
+    let mut out = Map::with_capacity(obj.len());
+
+    for (key, value) in obj {
+        match key.as_str() {
+            "where" | "content" => continue,
+            "refresh_interval" => {
+                let hours = value.as_u64().unwrap_or(0);
+                out.insert("refresh_interval".into(), json!(hours * 3600));
+            }
+            "children" => {
+                if let Some(children) = value.as_array() {
+                    let mut new_children = Vec::with_capacity(children.len());
+                    for child in children {
+                        new_children.push(convert_v3_node(child, paths)?);
+                    }
+                    out.insert("children".into(), Value::Array(new_children));
+                } else {
+                    out.insert("children".into(), value.clone());
+                }
+            }
+            _ => {
+                out.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    if let Some(where_val) = obj.get("where") {
+        out.insert("type".into(), where_val.clone());
+    }
+
+    if let Some(id) = obj.get("id").and_then(Value::as_str) {
+        if id != "0" {
+            if let Some(content) = obj.get("content").and_then(Value::as_str) {
+                entries::write_entry(&paths.entries_dir, id, content)?;
+            }
+        }
+    }
+
+    Ok(Value::Object(out))
+}
+
+fn import_v4(data: &Value, paths: &AppPaths) -> Result<Value, StorageError> {
+    let Some(inner) = data.get("data").filter(|v| v.is_object()) else {
+        return Ok(json!(ERR_INVALID_DATA_KEY));
+    };
+
+    paths.ensure_layout()?;
+
+    let tree = inner
+        .get("list")
+        .and_then(|l| l.get("tree"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let trashcan_items = inner
+        .get("list")
+        .and_then(|l| l.get("trashcan"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let hosts_data = inner
+        .get("collection")
+        .and_then(|c| c.get("hosts"))
+        .and_then(|h| h.get("data"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let history_data = inner
+        .get("collection")
+        .and_then(|c| c.get("history"))
+        .and_then(|h| h.get("data"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    for entry in &hosts_data {
+        let id = entry.get("id").and_then(Value::as_str);
+        let content = entry.get("content").and_then(Value::as_str);
+        if let (Some(id), Some(content)) = (id, content) {
+            if id == "0" {
+                continue;
+            }
+            entries::write_entry(&paths.entries_dir, id, content)?;
+        }
+    }
+
+    Trashcan {
+        items: parse_trashcan_items(trashcan_items),
+        ..Default::default()
+    }
+    .save(&paths.trashcan_file)?;
+
+    Manifest {
+        root: tree,
+        ..Default::default()
+    }
+    .save(paths)?;
+
+    if !history_data.is_empty() {
+        write_history(
+            &paths.histories_dir.join("system-hosts.json"),
+            &history_data,
+        )?;
+    }
+
+    Ok(json!(true))
+}
+
+fn write_history(path: &Path, items: &[Value]) -> Result<(), StorageError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| StorageError::io(parent.display().to_string(), e))?;
+    }
+    let payload = serde_json::to_vec_pretty(items)
+        .map_err(|e| StorageError::serialize(path.display().to_string(), e))?;
+    atomic_write(path, &payload)
 }
 
 fn import_switchhosts_v5(data: &Value, paths: &AppPaths) -> Result<Value, StorageError> {
@@ -470,5 +633,157 @@ mod tests {
             entries::read_entry(&paths.entries_dir, "1").unwrap(),
             "127.0.0.1 fresh\n"
         );
+    }
+
+    #[test]
+    fn dispatcher_returns_new_version_for_future_major() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let bytes = serde_json::to_vec(&json!({ "version": [99, 0, 0] })).unwrap();
+        let result = import_backup_bytes(&bytes, &paths).unwrap();
+        assert_eq!(result, json!(ERR_NEW_VERSION));
+    }
+
+    #[test]
+    fn import_v3_promotes_where_to_type_and_converts_interval() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let backup = json!({
+            "version": [3, 0],
+            "list": [
+                { "id": "0", "where": "system", "title": "System Hosts" },
+                {
+                    "id": "abc",
+                    "where": "local",
+                    "title": "Local",
+                    "content": "127.0.0.1 example.test\n",
+                    "on": true,
+                },
+                {
+                    "id": "rem",
+                    "where": "remote",
+                    "title": "Remote",
+                    "url": "https://example.com/hosts",
+                    "refresh_interval": 2,
+                },
+            ],
+        });
+
+        let result = import_backup_bytes(&serde_json::to_vec(&backup).unwrap(), &paths).unwrap();
+        assert_eq!(result, json!(true));
+
+        let loaded = Manifest::load(&paths).unwrap();
+        let local = loaded.root.iter().find(|n| n["id"] == "abc").unwrap();
+        assert_eq!(local.get("type").and_then(Value::as_str), Some("local"));
+        assert!(local.get("where").is_none());
+        assert!(local.get("content").is_none());
+        assert_eq!(
+            entries::read_entry(&paths.entries_dir, "abc").unwrap(),
+            "127.0.0.1 example.test\n"
+        );
+
+        let remote = loaded.root.iter().find(|n| n["id"] == "rem").unwrap();
+        assert_eq!(
+            remote.get("refresh_interval").and_then(Value::as_u64),
+            Some(7200)
+        );
+        assert!(!paths.entry_file("0").exists());
+    }
+
+    #[test]
+    fn import_v3_recurses_into_folder_children() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let backup = json!({
+            "version": [3, 0],
+            "list": [{
+                "id": "f",
+                "where": "folder",
+                "title": "Folder",
+                "children": [{
+                    "id": "child",
+                    "where": "local",
+                    "content": "child-content",
+                }]
+            }]
+        });
+
+        import_backup_bytes(&serde_json::to_vec(&backup).unwrap(), &paths).unwrap();
+
+        let loaded = Manifest::load(&paths).unwrap();
+        let folder = &loaded.root[0];
+        assert_eq!(folder.get("type").and_then(Value::as_str), Some("folder"));
+        let child = &folder["children"][0];
+        assert_eq!(child.get("type").and_then(Value::as_str), Some("local"));
+        assert!(child.get("content").is_none());
+        assert_eq!(
+            entries::read_entry(&paths.entries_dir, "child").unwrap(),
+            "child-content"
+        );
+    }
+
+    #[test]
+    fn import_v3_returns_invalid_v3_data_when_list_missing() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let bytes = serde_json::to_vec(&json!({ "version": [3, 0] })).unwrap();
+        let result = import_backup_bytes(&bytes, &paths).unwrap();
+        assert_eq!(result, json!(ERR_INVALID_V3_DATA));
+    }
+
+    #[test]
+    fn import_v4_extracts_content_tree_and_trashcan() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let backup = json!({
+            "version": [4, 0, 0],
+            "data": {
+                "list": {
+                    "tree": [{ "id": "abc", "type": "local", "title": "Local", "on": true }],
+                    "trashcan": [{
+                        "id": "trashed",
+                        "data": { "id": "trashed", "type": "local" },
+                        "add_time_ms": 0
+                    }],
+                },
+                "collection": {
+                    "hosts": {
+                        "data": [
+                            { "id": "0", "content": "system-content-skipped" },
+                            { "id": "abc", "content": "abc-content" },
+                        ]
+                    },
+                    "history": {
+                        "data": [{ "id": "h1", "content": "old", "add_time_ms": 0 }]
+                    }
+                }
+            }
+        });
+
+        let result = import_backup_bytes(&serde_json::to_vec(&backup).unwrap(), &paths).unwrap();
+        assert_eq!(result, json!(true));
+
+        let loaded = Manifest::load(&paths).unwrap();
+        assert_eq!(loaded.root[0]["id"], "abc");
+        assert_eq!(
+            entries::read_entry(&paths.entries_dir, "abc").unwrap(),
+            "abc-content"
+        );
+        assert!(!paths.entry_file("0").exists());
+
+        let trashcan = Trashcan::load(&paths.trashcan_file);
+        assert_eq!(trashcan.items.len(), 1);
+        assert_eq!(trashcan.items[0].id, "trashed");
+
+        assert!(paths.histories_dir.join("system-hosts.json").exists());
+    }
+
+    #[test]
+    fn import_v4_returns_invalid_data_key_when_data_missing() {
+        let tmp = TempDir::new().unwrap();
+        let paths = AppPaths::new(tmp.path().to_path_buf());
+        let bytes = serde_json::to_vec(&json!({ "version": [4, 0] })).unwrap();
+        let result = import_backup_bytes(&bytes, &paths).unwrap();
+        assert_eq!(result, json!(ERR_INVALID_DATA_KEY));
     }
 }
