@@ -160,8 +160,14 @@ jobs:
               -f target_commitish="$current" \
               --jq .body)
           else
-            echo "No previous tag; listing commits"
-            body="$(printf '## What'\''s Changed\n\n%s' "$(git log --pretty=format:'- %s (%h)' --no-merges)")"
+            echo "First release (no previous tag); notes from full commit history"
+            body=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$current" \
+              -f target_commitish="$current" \
+              --jq .body)
+            if [ -z "$body" ]; then
+              body="$(printf '## What'\''s Changed\n\n%s' "$(git log --pretty=format:'- %s (%h)' --no-merges --reverse)")"
+            fi
           fi
 
           {
