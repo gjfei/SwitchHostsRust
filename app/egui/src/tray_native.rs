@@ -51,7 +51,7 @@ fn dispatch_tray_action(action: Option<TrayAction>) {
     match &action {
         TrayAction::ShowWindow => {
             #[cfg(target_os = "macos")]
-            crate::macos::show_main_window();
+            crate::macos_delegate::request_show_main_window();
             push_tray_action(action);
         }
         TrayAction::Quit => {

@@ -84,7 +84,7 @@ pub fn quit_app() {
 
 /// Dock 点击重新打开时，将应用激活到前台并显示窗口。
 pub fn show_main_window() {
-    crate::macos_delegate::show_windows_at_appkit_level();
+    crate::macos_delegate::request_show_main_window();
 }
 
 /// 激活应用到前台（不强制显示窗口）。

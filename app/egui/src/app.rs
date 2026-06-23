@@ -470,6 +470,7 @@ impl SwitchHostsApp {
     fn show_main_window(&self, ctx: &egui::Context) {
         #[cfg(target_os = "macos")]
         crate::macos::show_main_window();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         ctx.request_repaint();
@@ -686,6 +687,11 @@ impl eframe::App for SwitchHostsApp {
 
         if ctx.input(|i| i.viewport().close_requested()) {
             self.handle_close_request(ctx);
+        }
+
+        #[cfg(target_os = "macos")]
+        if crate::macos_delegate::take_show_main_window_request() {
+            self.show_main_window(ctx);
         }
 
         #[cfg(target_os = "macos")]

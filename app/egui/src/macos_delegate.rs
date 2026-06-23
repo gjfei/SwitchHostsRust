@@ -12,6 +12,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSWindow};
 
 static DOCK_SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
+static SHOW_MAIN_WINDOW_REQUESTED: AtomicBool = AtomicBool::new(false);
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 /// 与「关闭窗口时最小化到托盘」相反：未勾选时最后一个窗口关闭后应正常退出。
 static TERMINATE_AFTER_LAST_WINDOW_CLOSED: AtomicBool = AtomicBool::new(false);
@@ -29,10 +30,10 @@ pub fn register_main_ns_window(window: &NSWindow) {
     );
 }
 
-/// 在 AppKit 层激活应用并显示主窗口（须在菜单/Dock 回调中同步调用）。
+/// 在 AppKit 层激活应用并显示主窗口（须在主线程调用）。
 pub fn show_windows_at_appkit_level() {
     let Some(mtm) = MainThreadMarker::new() else {
-        tracing::warn!("show_windows_at_appkit_level 不在主线程");
+        request_show_main_window();
         return;
     };
 
@@ -44,17 +45,39 @@ pub fn show_windows_at_appkit_level() {
 
         let window_ptr = MAIN_NS_WINDOW.load(Ordering::Acquire);
         if !window_ptr.is_null() {
-            let window = &*(window_ptr as *const NSWindow);
-            window.makeKeyAndOrderFront(None);
+            raise_ns_window(&*(window_ptr as *const NSWindow));
         } else {
             let windows = app.windows();
             for i in 0..windows.count() {
-                windows.objectAtIndex(i).makeKeyAndOrderFront(None);
+                raise_ns_window(&windows.objectAtIndex(i));
             }
         }
     }
 
     wake_main_run_loop();
+}
+
+/// 托盘 / Dock 等回调可能不在主线程：排队到 RunLoop 或立即执行。
+pub fn request_show_main_window() {
+    if MainThreadMarker::new().is_some() {
+        show_windows_at_appkit_level();
+        return;
+    }
+    SHOW_MAIN_WINDOW_REQUESTED.store(true, Ordering::SeqCst);
+    wake_main_run_loop();
+}
+
+pub fn take_show_main_window_request() -> bool {
+    SHOW_MAIN_WINDOW_REQUESTED.swap(false, Ordering::SeqCst)
+}
+
+unsafe fn raise_ns_window(window: &NSWindow) {
+    if window.isMiniaturized() {
+        window.deminiaturize(None);
+    }
+    // 窗口已可见但落在其他应用后面时，makeKeyAndOrderFront 不足以置顶。
+    window.orderFrontRegardless();
+    window.makeKeyAndOrderFront(None);
 }
 
 pub fn wake_main_run_loop() {
@@ -204,6 +227,9 @@ pub fn install_tray_runloop_poll() {
             _: usize,
             _: *mut std::ffi::c_void,
         ) {
+            if SHOW_MAIN_WINDOW_REQUESTED.swap(false, Ordering::SeqCst) {
+                show_windows_at_appkit_level();
+            }
             crate::tray_native::poll_tray_events_on_runloop();
         }
 
