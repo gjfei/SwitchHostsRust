@@ -35,6 +35,15 @@ fn popup_pos_id(popup_id: Id) -> Id {
     popup_id.with("app_menu_pos")
 }
 
+fn click_menu_open_time_key(popup_id: Id) -> Id {
+    popup_id.with("app_click_menu_open_time")
+}
+
+fn keep_popup_alive(ctx: &egui::Context, popup_id: Id) {
+    #[expect(deprecated)]
+    ctx.memory_mut(|mem| mem.keep_popup_open(popup_id));
+}
+
 fn menu_width_key(popup_id: Id) -> Id {
     popup_id.with("app_menu_width")
 }
@@ -47,6 +56,7 @@ pub fn close_menu(ui: &Ui, popup_id: Id) {
     ui.ctx().data_mut(|d| {
         d.remove_temp::<Pos2>(popup_pos_id(popup_id));
         d.remove_temp::<f32>(menu_width_key(popup_id));
+        d.remove_temp::<f64>(click_menu_open_time_key(popup_id));
         if popup_id == context_menu_popup() {
             d.remove::<Id>(context_menu_owner_key());
             d.remove::<f64>(context_menu_open_time_key());
@@ -66,7 +76,16 @@ pub fn toggle_click_menu(ui: &Ui, popup_id: Id, anchor: &Response) {
         invalidate_menu_width(ui, popup_id);
         ui.ctx()
             .data_mut(|d| d.remove_temp::<Pos2>(popup_pos_id(popup_id)));
+        let was_open = is_menu_open(ui, popup_id);
         Popup::toggle_id(ui.ctx(), popup_id);
+        if was_open {
+            ui.ctx()
+                .data_mut(|d| d.remove_temp::<f64>(click_menu_open_time_key(popup_id)));
+        } else {
+            let open_time = ui.input(|i| i.time);
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(click_menu_open_time_key(popup_id), open_time));
+        }
     }
 }
 
@@ -192,6 +211,8 @@ fn show_popup_menu<R>(
     context_owner: Option<&Response>,
     add_contents: &mut impl FnMut(&mut dyn MenuContents) -> R,
 ) -> Option<R> {
+    keep_popup_alive(ui.ctx(), popup_id);
+
     let (pos, pivot) = if let Some(pointer) =
         ui.ctx().data(|d| d.get_temp::<Pos2>(popup_pos_id(popup_id)))
     {
@@ -291,6 +312,12 @@ fn should_close_menu(
     }
 
     if let Some(a) = anchor {
+        let open_time = ui
+            .ctx()
+            .data(|d| d.get_temp::<f64>(click_menu_open_time_key(popup_id)));
+        if open_time.is_some_and(|t| ui.input(|i| i.time) == t) {
+            return false;
+        }
         return a.clicked_elsewhere() && pointer_primary_clicked_outside(ui, menu_rect);
     }
 

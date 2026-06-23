@@ -17,9 +17,9 @@ use crate::segmented::{
     paint_segment_icon_text, paint_segment_text, segmented_control,
 };
 use crate::panels::drawer::{
-    drawer_panel_frame, drawer_select, drawer_select_option, draw_drawer_header, outline_button,
-    outline_button_with_icon, primary_button, side_drawer_geometry, backdrop_dismiss_clicked,
-    paint_side_drawer_backdrop, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT,
+    drawer_footer_button_top, drawer_padded_scroll_body, drawer_select, drawer_select_option,
+    outline_button, outline_button_with_icon, primary_button, show_side_drawer,
+    DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT,
 };
 use crate::text_align::{self, ICON_ROW_LINE_HEIGHT};
 use crate::theme::{self, layout};
@@ -86,6 +86,10 @@ impl EditHostsState {
     pub fn is_add(&self) -> bool {
         matches!(self.mode, Some(EditHostsMode::Add))
     }
+
+    pub(crate) fn allows_backdrop_dismiss(&self) -> bool {
+        self.open_last_frame
+    }
 }
 
 /// 抽屉提交结果。
@@ -106,6 +110,7 @@ pub fn draw_edit_hosts_drawer(
     manifest: &mut Manifest,
     paths: &AppPaths,
     config: &AppConfig,
+    backdrop_dismissed: bool,
 ) -> EditHostsResult {
     if !state.open {
         state.open_last_frame = false;
@@ -114,93 +119,57 @@ pub fn draw_edit_hosts_drawer(
 
     let mut result = EditHostsResult::None;
     let is_add = state.is_add();
-    let allow_backdrop_dismiss = state.open_last_frame;
 
-    let geom = side_drawer_geometry(ctx, layout::DRAWER_WIDTH);
-    paint_side_drawer_backdrop(ctx, "edit_hosts_backdrop", geom.backdrop_rect);
-    if allow_backdrop_dismiss
-        && backdrop_dismiss_clicked(ctx, geom.backdrop_rect, geom.drawer_rect, true)
-    {
+    if state.allows_backdrop_dismiss() && backdrop_dismissed {
+        state.open = false;
+        state.open_last_frame = false;
+        return EditHostsResult::Cancelled;
+    }
+
+    let title = if is_add { "添加 hosts" } else { "编辑 hosts" };
+    if show_side_drawer(
+        ctx,
+        "edit_hosts_drawer",
+        Icon::Edit,
+        title,
+        "drawer_close",
+        layout::DRAWER_FOOTER_HEIGHT,
+        |ui, layout, footer| {
+            if footer {
+                draw_drawer_footer(ui, state, manifest, paths, is_add, &mut result);
+            } else {
+                drawer_padded_scroll_body(ui, layout, "edit_hosts_drawer_body", |ui| {
+                    form_section(ui, "Hosts 类型", |ui| {
+                        draw_kind_segmented(ui, &mut state.draft.kind, is_add);
+                    });
+                    form_section(ui, "Hosts 标题", |ui| {
+                        draw_title_field(
+                            ui,
+                            &mut state.draft.title,
+                            &mut state.title_error,
+                            &mut state.focus_title,
+                        );
+                    });
+                    match state.draft.kind {
+                        HostsNodeKind::Remote => {
+                            draw_remote_fields(ui, state, manifest, paths, config, is_add);
+                        }
+                        HostsNodeKind::Group => {
+                            draw_group_transfer(ui, state, manifest);
+                        }
+                        HostsNodeKind::Folder => {
+                            draw_folder_fields(ui, &mut state.draft.folder_mode);
+                        }
+                        HostsNodeKind::Local => {}
+                    }
+                    ui.add_space(24.0);
+                });
+            }
+        },
+    ) {
         state.open = false;
         result = EditHostsResult::Cancelled;
     }
-
-    egui::Area::new(egui::Id::new("edit_hosts_drawer"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(geom.area_rect.min)
-        .show(ctx, |ui| {
-            ui.set_min_size(geom.area_rect.size());
-            ui.set_max_size(geom.area_rect.size());
-
-            drawer_panel_frame(ctx)
-                .outer_margin(geom.shadow_margin)
-                .show(ui, |ui| {
-                    ui.set_width(geom.drawer_rect.width());
-                    ui.set_height(geom.drawer_rect.height());
-
-                    let title = if is_add { "添加 hosts" } else { "编辑 hosts" };
-                    ui.vertical(|ui| {
-                        if draw_drawer_header(ui, Icon::Edit, title, "drawer_close") {
-                            state.open = false;
-                            result = EditHostsResult::Cancelled;
-                        }
-
-                        let body_h = ui.available_height() - layout::DRAWER_FOOTER_HEIGHT;
-                        let body_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
-                        );
-                        ui.painter()
-                            .rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ScrollArea::vertical()
-                            .id_salt("edit_hosts_drawer_body")
-                            .auto_shrink([false; 2])
-                            .max_height(body_h.max(0.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.add_space(layout::DRAWER_PAD);
-                                    ui.vertical(|ui| {
-                                        ui.set_width(layout::DRAWER_WIDTH - layout::DRAWER_PAD * 2.0);
-                                        ui.add_space(layout::DRAWER_PAD);
-                                        form_section(ui, "Hosts 类型", |ui| {
-                                            draw_kind_segmented(ui, &mut state.draft.kind, is_add);
-                                        });
-                                        form_section(ui, "Hosts 标题", |ui| {
-                                            draw_title_field(
-                                                ui,
-                                                &mut state.draft.title,
-                                                &mut state.title_error,
-                                                &mut state.focus_title,
-                                            );
-                                        });
-                                        match state.draft.kind {
-                                            HostsNodeKind::Remote => {
-                                                draw_remote_fields(
-                                                    ui,
-                                                    state,
-                                                    manifest,
-                                                    paths,
-                                                    config,
-                                                    is_add,
-                                                );
-                                            }
-                                            HostsNodeKind::Group => {
-                                                draw_group_transfer(ui, state, manifest);
-                                            }
-                                            HostsNodeKind::Folder => {
-                                                draw_folder_fields(ui, &mut state.draft.folder_mode);
-                                            }
-                                            HostsNodeKind::Local => {}
-                                        }
-                                        ui.add_space(24.0);
-                                    });
-                                });
-                            });
-
-                        draw_drawer_footer(ui, state, manifest, paths, is_add, &mut result);
-                    });
-                });
-        });
 
     state.open_last_frame = state.open;
     result
@@ -216,14 +185,15 @@ fn draw_drawer_footer(
 ) {
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
+    let row_top = drawer_footer_button_top(rect);
     let half = (rect.width() - layout::DRAWER_PAD * 2.0) * 0.5;
     let left = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + layout::DRAWER_PAD, rect.top() + 16.0),
-        Vec2::new(half, 36.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD, row_top),
+        Vec2::new(half, layout::DRAWER_BTN_H),
     );
     let right = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + layout::DRAWER_PAD + half, rect.top() + 16.0),
-        Vec2::new(half, 36.0),
+        egui::pos2(rect.left() + layout::DRAWER_PAD + half, row_top),
+        Vec2::new(half, layout::DRAWER_BTN_H),
     );
 
     ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {

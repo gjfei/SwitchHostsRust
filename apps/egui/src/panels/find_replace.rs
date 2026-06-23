@@ -8,13 +8,12 @@ use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::entries;
 use switch_hosts_core::storage::manifest::Manifest;
 use switch_hosts_core::storage::paths::AppPaths;
-use eframe::egui::{self, Color32, CornerRadius, FontId, Id, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, FontId, Sense, Stroke, Ui, Vec2};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::drawer::{
-    backdrop_dismiss_clicked, drawer_panel_frame, drawer_text_button, draw_drawer_header,
-    paint_side_drawer_backdrop, side_drawer_geometry,
+    drawer_text_button, show_side_drawer,
 };
 use crate::panels::widgets::ellipsize_text;
 use crate::text_align;
@@ -23,7 +22,7 @@ use crate::theme::{self, layout};
 const DEBOUNCE_SECS: f64 = 0.5;
 const INPUT_ROW_H: f32 = 36.0;
 const INPUT_PAD_X: f32 = layout::DRAWER_PAD;
-const INPUT_PAD_RIGHT: f32 = 12.0;
+const INPUT_PAD_RIGHT: f32 = layout::DRAWER_PAD;
 const CHECKBOX_ROW_H: f32 = 36.0;
 const RESULT_ROW_HEIGHT: f32 = 29.0;
 const RESULT_LIST_PAD_Y: f32 = 5.0;
@@ -80,13 +79,12 @@ impl FindReplaceState {
         self.error = None;
         self.is_replacing = false;
     }
+
+    pub(crate) fn allows_backdrop_dismiss(&self) -> bool {
+        self.open_last_frame
+    }
 }
 
-fn find_drawer_width(ctx: &egui::Context) -> f32 {
-    let screen = ctx.input(|i| i.content_rect());
-    let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
-    inset.width().clamp(layout::DRAWER_WIDTH, 720.0)
-}
 
 pub fn draw_find_replace_drawer(
     ctx: &egui::Context,
@@ -94,6 +92,7 @@ pub fn draw_find_replace_drawer(
     config: &mut AppConfig,
     manifest: &Manifest,
     paths: &AppPaths,
+    backdrop_dismissed: bool,
 ) -> Option<FindReplaceAction> {
     if !state.open {
         state.open_last_frame = false;
@@ -124,84 +123,57 @@ pub fn draw_find_replace_drawer(
         .iter()
         .any(|r| !r.is_readonly && !r.is_disabled);
 
-    let allow_backdrop_dismiss = state.open_last_frame;
-    let width = find_drawer_width(ctx);
-    let geom = side_drawer_geometry(ctx, width);
-
-    paint_side_drawer_backdrop(ctx, "find_backdrop", geom.backdrop_rect);
-    if allow_backdrop_dismiss
-        && backdrop_dismiss_clicked(ctx, geom.backdrop_rect, geom.drawer_rect, true)
-    {
+    if state.allows_backdrop_dismiss() && backdrop_dismissed {
         state.close();
         state.open_last_frame = false;
         return None;
     }
 
-    egui::Area::new(Id::new("find_drawer"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(geom.area_rect.min)
-        .show(ctx, |ui| {
-            ui.set_min_size(geom.area_rect.size());
-            ui.set_max_size(geom.area_rect.size());
-
-            drawer_panel_frame(ctx)
-                .outer_margin(geom.shadow_margin)
-                .show(ui, |ui| {
-                    ui.set_width(geom.drawer_rect.width());
-                    ui.set_height(geom.drawer_rect.height());
-
-                    ui.vertical(|ui| {
-                        if draw_drawer_header(ui, Icon::Search, "查找并替换", "find_close") {
-                            state.close();
-                        }
-
-                        let body_h = ui.available_height() - layout::DRAWER_FOOTER_HEIGHT;
-                        let body_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
-                        );
-                        ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
-                            ui.spacing_mut().item_spacing.y = 0.0;
-                            draw_find_body(
-                                ui,
-                                ctx,
-                                state,
-                                config,
-                                paths,
-                                state.is_replacing,
-                                action_busy,
-                                &mut action,
-                                results_current,
-                                pending_search,
-                                can_replace_all,
-                                manifest,
-                                &options,
-                            );
-                        });
-
-                        let footer_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
-                        );
-                        ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
-                            draw_find_footer(
-                                ui,
-                                state,
-                                results_current,
-                                pending_search,
-                                can_replace_all,
-                                action_busy,
-                                &mut action,
-                                manifest,
-                                paths,
-                                config,
-                                &options,
-                            );
-                        });
-                    });
-                });
-        });
+    if show_side_drawer(
+        ctx,
+        "find_drawer",
+        Icon::Search,
+        "查找并替换",
+        "find_close",
+        layout::DRAWER_FOOTER_HEIGHT,
+        |ui, layout, footer| {
+            if footer {
+                draw_find_footer(
+                    ui,
+                    state,
+                    results_current,
+                    pending_search,
+                    can_replace_all,
+                    action_busy,
+                    &mut action,
+                    manifest,
+                    paths,
+                    config,
+                    &options,
+                );
+            } else {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.set_height(layout.body_height);
+                draw_find_body(
+                    ui,
+                    ctx,
+                    state,
+                    config,
+                    paths,
+                    state.is_replacing,
+                    action_busy,
+                    &mut action,
+                    results_current,
+                    pending_search,
+                    can_replace_all,
+                    manifest,
+                    &options,
+                );
+            }
+        },
+    ) {
+        state.close();
+    }
 
     state.open_last_frame = state.open;
     action

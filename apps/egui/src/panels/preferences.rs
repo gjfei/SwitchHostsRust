@@ -7,15 +7,14 @@ use switch_hosts_core::hosts_apply::{
 use switch_hosts_core::hosts_apply::target::system_hosts_path;
 use switch_hosts_core::storage::config::AppConfig;
 use switch_hosts_core::storage::paths::AppPaths;
-use eframe::egui::{self, Color32, Id, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
 
 use crate::config_effects::reveal_path_in_file_manager;
 use crate::fonts::ui_font_id;
 use crate::icons::Icon;
 use crate::segmented::{SegmentedConfig, segmented_text_values};
 use crate::panels::drawer::{
-    backdrop_dismiss_clicked, drawer_panel_frame, drawer_select, draw_drawer_header, outline_button,
-    paint_side_drawer_backdrop, primary_button, side_drawer_geometry, DRAWER_BTN_H,
+    drawer_select, outline_button, primary_button, show_side_drawer, DRAWER_BTN_H,
     DRAWER_INPUT_HEIGHT,
 };
 use crate::theme::{self, layout};
@@ -96,6 +95,10 @@ impl PreferencesState {
             .unwrap_or_default();
         self.cmd_history.reverse();
     }
+
+    pub(crate) fn allows_backdrop_dismiss(&self) -> bool {
+        self.open_last_frame
+    }
 }
 
 pub fn draw_preferences_drawer(
@@ -103,6 +106,7 @@ pub fn draw_preferences_drawer(
     state: &mut PreferencesState,
     config: &mut AppConfig,
     paths: &AppPaths,
+    backdrop_dismissed: bool,
 ) -> PreferencesAction {
     if !state.open {
         state.open_last_frame = false;
@@ -124,115 +128,67 @@ pub fn draw_preferences_drawer(
     }
 
     let mut action = PreferencesAction::None;
-    let allow_backdrop_dismiss = state.open_last_frame;
-    let geom = side_drawer_geometry(ctx, layout::DRAWER_WIDTH_LG);
 
-    paint_side_drawer_backdrop(ctx, "pref_backdrop", geom.backdrop_rect);
-    if allow_backdrop_dismiss
-        && backdrop_dismiss_clicked(ctx, geom.backdrop_rect, geom.drawer_rect, true)
-    {
+    if state.allows_backdrop_dismiss() && backdrop_dismissed {
         state.open = false;
         state.open_last_frame = false;
         return PreferencesAction::None;
     }
 
-    egui::Area::new(Id::new("pref_drawer"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(geom.area_rect.min)
-        .show(ctx, |ui| {
-            ui.set_min_size(geom.area_rect.size());
-            ui.set_max_size(geom.area_rect.size());
+    let footer_h = if state.active_tab.needs_footer() {
+        layout::DRAWER_FOOTER_HEIGHT
+    } else {
+        0.0
+    };
 
-            drawer_panel_frame(ctx)
-                .outer_margin(geom.shadow_margin)
-                .show(ui, |ui| {
-                    ui.set_width(geom.drawer_rect.width());
-                    ui.set_height(geom.drawer_rect.height());
-
-                    ui.vertical(|ui| {
-                        if draw_drawer_header(ui, Icon::Settings, "偏好设置", "pref_close") {
-                            state.open = false;
-                        }
-
-                        let footer_h = if state.active_tab.needs_footer() {
-                            layout::DRAWER_FOOTER_HEIGHT
-                        } else {
-                            0.0
-                        };
-                        let body_h = ui.available_height() - footer_h;
-                        let body_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            Vec2::new(geom.drawer_rect.width(), body_h.max(0.0)),
-                        );
-                        ui.painter().rect_filled(body_rect, 0.0, theme::app(ctx).editor_bg);
-                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
-                            ui.spacing_mut().item_spacing.y = 0.0;
-                            draw_tab_bar(ui, &mut state.active_tab);
-                            ScrollArea::vertical()
-                                .id_salt("pref_drawer_body")
-                                .auto_shrink([false; 2])
-                                .scroll_bar_visibility(
-                                    egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
-                                )
-                                .show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(layout::DRAWER_PAD);
-                                        ui.vertical(|ui| {
-                                            ui.set_width(
-                                                layout::DRAWER_WIDTH_LG - layout::DRAWER_PAD * 2.0,
-                                            );
-                                            ui.add_space(TAB_CONTENT_PAD_Y);
-                                            match state.active_tab {
-                                                PrefTab::General => draw_general_tab(
-                                                    ui,
-                                                    config,
-                                                    paths,
-                                                    &mut action,
-                                                ),
-                                                PrefTab::Commands => draw_commands_tab(
-                                                    ui,
-                                                    state,
-                                                    paths,
-                                                ),
-                                                PrefTab::Proxy => draw_proxy_tab(ui, state),
-                                                PrefTab::Advanced => draw_advanced_tab(
-                                                    ui,
-                                                    config,
-                                                    paths,
-                                                    &mut action,
-                                                ),
-                                            }
-                                            ui.add_space(60.0);
-                                        });
-                                    });
-                                });
-                        });
-
-                        if state.active_tab.needs_footer() {
-                            let footer_rect = egui::Rect::from_min_size(
-                                ui.cursor().min,
-                                Vec2::new(geom.drawer_rect.width(), layout::DRAWER_FOOTER_HEIGHT),
-                            );
-                            ui.scope_builder(
-                                egui::UiBuilder::new().max_rect(footer_rect),
-                                |ui| {
-                                    if draw_draft_footer(
-                                        ui,
-                                        state,
-                                        config,
-                                        paths,
-                                        &mut action,
-                                    ) {
-                                        state.draft_save_status = DraftSaveStatus::Saved;
-                                        state.draft_saved_at =
-                                            Some(ctx.input(|i| i.time));
+    if show_side_drawer(
+        ctx,
+        "pref_drawer",
+        Icon::Settings,
+        "偏好设置",
+        "pref_close",
+        footer_h,
+        |ui, layout, footer| {
+            if footer {
+                if draw_draft_footer(ui, state, config, paths, &mut action) {
+                    state.draft_save_status = DraftSaveStatus::Saved;
+                    state.draft_saved_at = Some(ctx.input(|i| i.time));
+                }
+            } else {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                draw_tab_bar(ui, &mut state.active_tab);
+                ScrollArea::vertical()
+                    .id_salt("pref_drawer_body")
+                    .auto_shrink([false; 2])
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    )
+                    .max_height((layout.body_height - TAB_BAR_H).max(0.0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(layout::DRAWER_PAD);
+                            ui.vertical(|ui| {
+                                ui.set_width(layout.content_width);
+                                ui.add_space(TAB_CONTENT_PAD_Y);
+                                match state.active_tab {
+                                    PrefTab::General => {
+                                        draw_general_tab(ui, config, paths, &mut action)
                                     }
-                                },
-                            );
-                        }
+                                    PrefTab::Commands => draw_commands_tab(ui, state, paths),
+                                    PrefTab::Proxy => draw_proxy_tab(ui, state),
+                                    PrefTab::Advanced => {
+                                        draw_advanced_tab(ui, config, paths, &mut action)
+                                    }
+                                }
+                                ui.add_space(60.0);
+                            });
+                        });
                     });
-                });
-        });
+            }
+        },
+    ) {
+        state.open = false;
+    }
 
     state.open_last_frame = state.open;
     action

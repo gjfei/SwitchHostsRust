@@ -1,6 +1,6 @@
 //! 右侧 SideDrawer 共享壳层（编辑 / 历史等抽屉复用）。
 
-use eframe::egui::{self, Color32, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
 
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
@@ -11,7 +11,8 @@ pub use layout::{
     DRAWER_BTN_H, DRAWER_BTN_MIN_W, DRAWER_INPUT_H_PAD, DRAWER_INPUT_HEIGHT,
 };
 
-/// 抽屉几何（对齐 `edit_hosts` / `SideDrawer` 右侧 inset）。
+/// 抽屉几何（对齐 Mantine Drawer：`offset: 8`、`size="lg"`）。
+#[derive(Clone, Copy)]
 pub struct SideDrawerGeometry {
     pub backdrop_rect: egui::Rect,
     pub drawer_rect: egui::Rect,
@@ -19,27 +20,47 @@ pub struct SideDrawerGeometry {
     pub shadow_margin: egui::Margin,
 }
 
+/// `content_rect` 四边内缩 `DRAWER_OFFSET`（对齐 Mantine Drawer `offset: 8`）。
+fn side_drawer_inset_rect(ctx: &egui::Context) -> egui::Rect {
+    ctx.input(|i| i.content_rect())
+        .shrink2(Vec2::splat(layout::DRAWER_OFFSET))
+}
+
+/// 侧栏抽屉统一宽度（Mantine Drawer `size="lg"` = 620px）。
+pub fn side_drawer_width(ctx: &egui::Context) -> f32 {
+    let inset = side_drawer_inset_rect(ctx);
+    layout::DRAWER_WIDTH_LG.min(inset.width())
+}
+
+/// 抽屉内容区宽度（左右各 `DRAWER_PAD`）。
+pub fn drawer_content_width(drawer_width: f32) -> f32 {
+    (drawer_width - layout::DRAWER_PAD * 2.0).max(0.0)
+}
+
+/// 侧栏抽屉主体布局参数（壳层计算后传给各面板 body/footer）。
+#[derive(Clone, Copy)]
+pub struct SideDrawerLayout {
+    pub geom: SideDrawerGeometry,
+    pub body_height: f32,
+    pub content_width: f32,
+}
+
+/// 蒙层覆盖整个 viewport（含自定义标题栏区域）。
+pub fn side_drawer_backdrop_rect(ctx: &egui::Context) -> egui::Rect {
+    ctx.input(|i| i.viewport_rect())
+}
+
 pub fn side_drawer_geometry(ctx: &egui::Context, width: f32) -> SideDrawerGeometry {
     let t = theme::app(ctx);
     let shadow = t.drawer_shadow();
-    let screen = ctx.input(|i| i.content_rect());
-    let backdrop_rect = screen;
-    let drawer_rect = {
-        let inset = screen.shrink2(Vec2::splat(layout::DRAWER_OFFSET));
-        egui::Rect::from_min_max(
-            egui::pos2(inset.right() - width, inset.top()),
-            egui::pos2(inset.right(), inset.bottom()),
-        )
-    };
-    let shadow_margin = {
-        let sm = shadow.margin();
-        egui::Margin {
-            left: sm.left.ceil() as i8,
-            right: sm.right.ceil() as i8,
-            top: sm.top.ceil() as i8,
-            bottom: sm.bottom.ceil() as i8,
-        }
-    };
+    let backdrop_rect = side_drawer_backdrop_rect(ctx);
+    let shadow_margin = drawer_shadow_margin(&shadow);
+    let inset = side_drawer_inset_rect(ctx);
+    let drawer_w = width.min(inset.width());
+    let drawer_rect = egui::Rect::from_min_max(
+        egui::pos2(inset.right() - drawer_w, inset.top()),
+        egui::pos2(inset.right(), inset.bottom()),
+    );
     let area_rect = egui::Rect::from_min_max(
         egui::pos2(
             drawer_rect.min.x - shadow_margin.left as f32,
@@ -58,27 +79,109 @@ pub fn side_drawer_geometry(ctx: &egui::Context, width: f32) -> SideDrawerGeomet
     }
 }
 
-pub fn paint_side_drawer_backdrop(ctx: &egui::Context, backdrop_id: &str, backdrop_rect: egui::Rect) {
-    ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new(backdrop_id),
-    ))
-    .rect_filled(backdrop_rect, 0.0, Color32::from_black_alpha(100));
+/// 抽屉阴影占位：顶部取 `spread + blur/2`（= 8），不受 `offset_y` 扣减。
+fn drawer_shadow_margin(shadow: &egui::epaint::Shadow) -> egui::Margin {
+    let sm = shadow.margin();
+    let top = (shadow.spread as f32 + shadow.blur as f32 * 0.5).ceil() as i8;
+    egui::Margin {
+        left: sm.left.ceil() as i8,
+        right: sm.right.ceil() as i8,
+        top,
+        bottom: sm.bottom.ceil() as i8,
+    }
 }
 
-pub fn backdrop_dismiss_clicked(
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SideDrawerBackdrop {
+    pub dismiss_clicked: bool,
+}
+
+/// 全屏蒙层：阻挡下层 hover / 滚动，并检测点击抽屉外关闭。
+pub fn show_side_drawer_backdrop(
     ctx: &egui::Context,
+    backdrop_id: &str,
     backdrop_rect: egui::Rect,
-    drawer_rect: egui::Rect,
-    allow: bool,
-) -> bool {
-    allow
-        && ctx.input(|i| {
-            i.pointer.primary_clicked()
-                && i.pointer.interact_pos().is_some_and(|pos| {
-                    backdrop_rect.contains(pos) && !drawer_rect.contains(pos)
-                })
-        })
+    drawer_rects: &[egui::Rect],
+) -> SideDrawerBackdrop {
+    let id = egui::Id::new(backdrop_id);
+    let mut dismiss_clicked = false;
+    let block_sense = Sense::click() | Sense::drag();
+
+    egui::Area::new(id)
+        // 蒙层固定在 Middle，抽屉在 Foreground，避免重复打开时 move_to_top 把蒙层顶到面板上方。
+        .order(egui::Order::Middle)
+        .fixed_pos(backdrop_rect.min)
+        .interactable(true)
+        .show(ctx, |ui| {
+            ui.set_min_size(backdrop_rect.size());
+            ui.set_max_size(backdrop_rect.size());
+            ui.painter()
+                .rect_filled(backdrop_rect, 0.0, Color32::from_black_alpha(100));
+
+            let response = ui.interact(backdrop_rect, id.with("block"), block_sense);
+            if response.hovered() {
+                ui.ctx().input_mut(|i| {
+                    i.smooth_scroll_delta = Vec2::ZERO;
+                });
+            }
+            if response.clicked() {
+                if ui.input(|i| {
+                    i.pointer.interact_pos().is_some_and(|pos| {
+                        drawer_rects.iter().all(|r| !r.contains(pos))
+                    })
+                }) {
+                    dismiss_clicked = true;
+                }
+            }
+        });
+
+    SideDrawerBackdrop { dismiss_clicked }
+}
+
+/// footer 内按钮行顶边（垂直居中，对齐 Mantine `spacing-md` 上下各 16px）。
+pub fn drawer_footer_button_top(footer_rect: egui::Rect) -> f32 {
+    footer_rect.top() + (footer_rect.height() - layout::DRAWER_BTN_H) * 0.5
+}
+
+/// 主界面绘制前调用：抽屉打开且指针不在抽屉内时吞掉滚动，避免下层 ScrollArea 响应。
+pub fn suppress_input_behind_open_drawers(ctx: &egui::Context, drawer_rects: &[egui::Rect]) {
+    if drawer_rects.is_empty() {
+        return;
+    }
+    let block_scroll = ctx.input(|i| {
+        i.pointer
+            .hover_pos()
+            .is_some_and(|pos| drawer_rects.iter().all(|r| !r.contains(pos)))
+    });
+    if block_scroll {
+        ctx.input_mut(|i| {
+            i.smooth_scroll_delta = Vec2::ZERO;
+        });
+    }
+}
+
+/// 收集当前打开中的侧栏抽屉面板矩形（用于输入屏蔽）。
+pub fn open_side_drawer_rects(
+    ctx: &egui::Context,
+    edit_open: bool,
+    history_open: bool,
+    find_open: bool,
+    preferences_open: bool,
+) -> Vec<egui::Rect> {
+    let mut rects = Vec::new();
+    if edit_open {
+        rects.push(side_drawer_geometry(ctx, side_drawer_width(ctx)).drawer_rect);
+    }
+    if history_open {
+        rects.push(side_drawer_geometry(ctx, side_drawer_width(ctx)).drawer_rect);
+    }
+    if find_open {
+        rects.push(side_drawer_geometry(ctx, side_drawer_width(ctx)).drawer_rect);
+    }
+    if preferences_open {
+        rects.push(side_drawer_geometry(ctx, side_drawer_width(ctx)).drawer_rect);
+    }
+    rects
 }
 
 /// 标题栏 + 关闭按钮（hover 圆角底）。
@@ -119,7 +222,108 @@ pub fn draw_drawer_header(ui: &mut Ui, icon: Icon, title: &str, close_id: &str) 
     if close_resp.clicked() {
         close = true;
     }
+    ui.painter()
+        .hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, t.separator));
     close
+}
+
+/// 统一侧栏抽屉壳层：Area 定位、阴影 Frame、标题栏、主体区、底栏。
+/// `draw(ui, layout, is_footer)`：`is_footer == false` 为主体，`true` 为底栏。
+pub fn show_side_drawer(
+    ctx: &egui::Context,
+    area_id: &str,
+    icon: Icon,
+    title: &str,
+    close_salt: &str,
+    footer_height: f32,
+    mut draw: impl FnMut(&mut Ui, SideDrawerLayout, bool),
+) -> bool {
+    let width = side_drawer_width(ctx);
+    let geom = side_drawer_geometry(ctx, width);
+    let content_width = drawer_content_width(geom.drawer_rect.width());
+    let mut close_clicked = false;
+
+    egui::Area::new(egui::Id::new(area_id))
+        .order(egui::Order::Foreground)
+        .fixed_pos(geom.area_rect.min)
+        .show(ctx, |ui| {
+            ui.set_min_size(geom.area_rect.size());
+            ui.set_max_size(geom.area_rect.size());
+
+            drawer_panel_frame(ctx)
+                .outer_margin(geom.shadow_margin)
+                .show(ui, |ui| {
+                    ui.set_width(geom.drawer_rect.width());
+                    ui.set_height(geom.drawer_rect.height());
+
+                    ui.vertical(|ui| {
+                        if draw_drawer_header(ui, icon, title, close_salt) {
+                            close_clicked = true;
+                        }
+
+                        let area = egui::Rect::from_min_max(
+                            ui.cursor().min,
+                            egui::pos2(ui.max_rect().right(), ui.max_rect().bottom()),
+                        );
+                        let footer_top = if footer_height > 0.0 {
+                            (area.bottom() - footer_height).max(area.top())
+                        } else {
+                            area.bottom()
+                        };
+                        let body_rect =
+                            egui::Rect::from_min_max(area.min, egui::pos2(area.right(), footer_top));
+                        let body_h = body_rect.height();
+
+                        let layout = SideDrawerLayout {
+                            geom,
+                            body_height: body_h,
+                            content_width,
+                        };
+
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+                            draw(ui, layout, false);
+                        });
+
+                        if footer_height > 0.0 {
+                            let footer_rect = egui::Rect::from_min_max(
+                                egui::pos2(area.left(), footer_top),
+                                area.max,
+                            );
+                            ui.scope_builder(
+                                egui::UiBuilder::new().max_rect(footer_rect),
+                                |ui| {
+                                    draw(ui, layout, true);
+                                },
+                            );
+                        }
+                    });
+                });
+        });
+
+    close_clicked
+}
+
+/// SideDrawer 滚动内容区：左右与顶部 `DRAWER_PAD`（对齐 Mantine `spacing-md`）。
+pub fn drawer_padded_scroll_body(
+    ui: &mut Ui,
+    layout: SideDrawerLayout,
+    scroll_id: &str,
+    add_contents: impl FnOnce(&mut Ui),
+) {
+    ScrollArea::vertical()
+        .id_salt(scroll_id)
+        .auto_shrink([false; 2])
+        .max_height(layout.body_height)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(layout::DRAWER_PAD);
+                ui.vertical(|ui| {
+                    ui.set_width(layout.content_width);
+                    ui.add_space(layout::DRAWER_PAD);
+                    add_contents(ui);
+                });
+            });
+        });
 }
 
 pub fn drawer_text_button(

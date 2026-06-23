@@ -14,6 +14,10 @@ use eframe::egui;
 use raw_window_handle::HasWindowHandle;
 
 use crate::config_effects::apply_config_side_effects;
+use crate::panels::drawer::{
+    open_side_drawer_rects, show_side_drawer_backdrop, side_drawer_backdrop_rect,
+    suppress_input_behind_open_drawers,
+};
 use crate::data_transfer::{
     import_error_message, import_from_url as import_from_url_data, run_export_dialog,
     run_import_dialog, ExportResult, ImportResult,
@@ -551,6 +555,88 @@ impl SwitchHostsApp {
         }
     }
 
+    fn any_drawer_allows_backdrop_dismiss(&self) -> bool {
+        self.edit_hosts.allows_backdrop_dismiss()
+            || self.history.allows_backdrop_dismiss()
+            || self.find_replace.allows_backdrop_dismiss()
+            || self.preferences.allows_backdrop_dismiss()
+    }
+
+    fn draw_side_drawers(
+        &mut self,
+        ctx: &egui::Context,
+        backdrop_dismissed: bool,
+    ) -> (Option<FindReplaceAction>, PreferencesAction, EditHostsResult, HistoryResult) {
+        let pref_action = draw_preferences_drawer(
+            ctx,
+            &mut self.preferences,
+            &mut self.config,
+            &self.paths,
+            backdrop_dismissed,
+        );
+        if pref_action == PreferencesAction::ConfigChanged {
+            self.apply_config_effects(ctx);
+            self.startup_refresh_scheduled = self.config.refresh_remote_hosts_on_startup;
+        }
+
+        let find_action = draw_find_replace_drawer(
+            ctx,
+            &mut self.find_replace,
+            &mut self.config,
+            &self.manifest,
+            &self.paths,
+            backdrop_dismissed,
+        );
+
+        let edit_result = match draw_edit_hosts_drawer(
+            ctx,
+            &mut self.edit_hosts,
+            &mut self.manifest,
+            &self.paths,
+            &self.config,
+            backdrop_dismissed,
+        ) {
+            EditHostsResult::Saved { id } => {
+                self.selected_id = Some(id);
+                self.reload_editor();
+                self.persist_manifest();
+                EditHostsResult::None
+            }
+            EditHostsResult::MovedToTrash { node, parent_id } => {
+                let id = node
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                self.trashcan.push(TrashItem {
+                    id: id.clone(),
+                    node,
+                    parent_id,
+                    deleted_at: None,
+                });
+                let _ = self.trashcan.save(&self.paths.trashcan_file);
+                self.selected_id = Some(SYSTEM_NODE_ID.to_string());
+                self.reload_editor();
+                self.persist_manifest();
+                EditHostsResult::None
+            }
+            other => other,
+        };
+
+        let history_result = draw_history_drawer(
+            ctx,
+            &mut self.history,
+            &self.paths,
+            &mut self.config,
+            backdrop_dismissed,
+        );
+        if history_result == HistoryResult::ConfigChanged {
+            let _ = self.config.save(&self.paths.config_file);
+        }
+
+        (find_action, pref_action, edit_result, history_result)
+    }
+
     fn handle_config_menu_action(&mut self, ctx: &egui::Context, action: ConfigMenuAction) {
         match action {
             ConfigMenuAction::None => {}
@@ -661,50 +747,6 @@ impl eframe::App for SwitchHostsApp {
                 });
         }
 
-        if draw_preferences_drawer(
-            ctx,
-            &mut self.preferences,
-            &mut self.config,
-            &self.paths,
-        ) == PreferencesAction::ConfigChanged
-        {
-            self.apply_config_effects(ctx);
-            self.startup_refresh_scheduled = self.config.refresh_remote_hosts_on_startup;
-        }
-
-        if let Some(action) = draw_find_replace_drawer(
-            ctx,
-            &mut self.find_replace,
-            &mut self.config,
-            &self.manifest,
-            &self.paths,
-        ) {
-            match action {
-                FindReplaceAction::None => {}
-                FindReplaceAction::ContentChanged(ids) => {
-                    if self
-                        .selected_id
-                        .as_ref()
-                        .is_some_and(|id| ids.iter().any(|changed| changed == id))
-                    {
-                        self.reload_editor();
-                    }
-                }
-                FindReplaceAction::JumpToMatch {
-                    entry_id,
-                    start_char,
-                    end_char,
-                } => {
-                    self.nav_view = NavView::Hosts;
-                    if self.selected_id.as_deref() != Some(entry_id.as_str()) {
-                        self.selected_id = Some(entry_id);
-                        self.reload_editor();
-                    }
-                    self.editor_pending_selection = Some((start_char, end_char));
-                }
-            }
-        }
-
         let nav_action = draw_navigation(
             ui,
             &mut self.nav_view,
@@ -779,6 +821,14 @@ impl eframe::App for SwitchHostsApp {
         }
 
         let editor_text_before = self.editor_text.clone();
+        let open_drawers = open_side_drawer_rects(
+            ctx,
+            self.edit_hosts.open,
+            self.history.open,
+            self.find_replace.open,
+            self.preferences.open,
+        );
+        suppress_input_behind_open_drawers(ctx, &open_drawers);
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(t.editor_bg).inner_margin(0.0))
             .show_inside(ui, |ui| {
@@ -807,44 +857,51 @@ impl eframe::App for SwitchHostsApp {
             }
         }
 
-        match draw_edit_hosts_drawer(
+        let drawer_rects = open_side_drawer_rects(
             ctx,
-            &mut self.edit_hosts,
-            &mut self.manifest,
-            &self.paths,
-            &self.config,
-        ) {
-            EditHostsResult::Saved { id } => {
-                self.selected_id = Some(id);
-                self.reload_editor();
-                self.persist_manifest();
-            }
-            EditHostsResult::MovedToTrash { node, parent_id } => {
-                let id = node
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                self.trashcan.push(TrashItem {
-                    id: id.clone(),
-                    node,
-                    parent_id,
-                    deleted_at: None,
-                });
-                let _ = self.trashcan.save(&self.paths.trashcan_file);
-                self.selected_id = Some(SYSTEM_NODE_ID.to_string());
-                self.reload_editor();
-                self.persist_manifest();
-            }
-            EditHostsResult::Cancelled => {}
-            EditHostsResult::None => {}
-        }
+            self.edit_hosts.open,
+            self.history.open,
+            self.find_replace.open,
+            self.preferences.open,
+        );
+        let backdrop_dismissed = if !drawer_rects.is_empty() {
+            let backdrop = show_side_drawer_backdrop(
+                ctx,
+                "side_drawer_backdrop",
+                side_drawer_backdrop_rect(ctx),
+                &drawer_rects,
+            );
+            self.any_drawer_allows_backdrop_dismiss() && backdrop.dismiss_clicked
+        } else {
+            false
+        };
 
-        match draw_history_drawer(ctx, &mut self.history, &self.paths, &mut self.config) {
-            HistoryResult::ConfigChanged => {
-                let _ = self.config.save(&self.paths.config_file);
+        let (find_action, _, _, _) = self.draw_side_drawers(ctx, backdrop_dismissed);
+        if let Some(action) = find_action {
+            match action {
+                FindReplaceAction::None => {}
+                FindReplaceAction::ContentChanged(ids) => {
+                    if self
+                        .selected_id
+                        .as_ref()
+                        .is_some_and(|id| ids.iter().any(|changed| changed == id))
+                    {
+                        self.reload_editor();
+                    }
+                }
+                FindReplaceAction::JumpToMatch {
+                    entry_id,
+                    start_char,
+                    end_char,
+                } => {
+                    self.nav_view = NavView::Hosts;
+                    if self.selected_id.as_deref() != Some(entry_id.as_str()) {
+                        self.selected_id = Some(entry_id);
+                        self.reload_editor();
+                    }
+                    self.editor_pending_selection = Some((start_char, end_char));
+                }
             }
-            HistoryResult::Closed | HistoryResult::None => {}
         }
 
         match draw_import_from_url_modal(ctx, &mut self.import_from_url) {

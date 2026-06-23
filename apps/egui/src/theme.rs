@@ -43,8 +43,9 @@ pub mod layout {
     pub const TRASH_CLEAR_ICON: f32 = 16.0;
     pub const TRASH_CLEAR_HIT: f32 = 24.0;
 
+    /// Mantine Drawer `size="md"`（仅作表单控件参考宽度）
     pub const DRAWER_WIDTH: f32 = 440.0;
-    /// Mantine Drawer `size="lg"`（Pref / EditHosts / History）
+    /// Mantine Drawer `size="lg"`（EditHosts / History / Pref 统一使用）
     pub const DRAWER_WIDTH_LG: f32 = 620.0;
     pub const DRAWER_OFFSET: f32 = 8.0;
     pub const DRAWER_RADIUS: f32 = 8.0;
