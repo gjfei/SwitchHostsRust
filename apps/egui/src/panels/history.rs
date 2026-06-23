@@ -8,8 +8,9 @@ use eframe::egui::{self, Color32, CornerRadius, RichText, ScrollArea, Sense, Str
 use crate::fonts::ui_font_id;
 use crate::icons::{self, Icon};
 use crate::panels::drawer::{
-    drawer_footer_button_top, draw_confirm_modal, outline_button, outline_button_with_icon,
-    drawer_select, show_side_drawer, ConfirmModalResult, DRAWER_BTN_H,
+    drawer_footer_button_top, draw_confirm_modal, draw_drawer_header, drawer_panel_frame,
+    drawer_select, outline_button, outline_button_with_icon, side_drawer_geometry,
+    side_drawer_width, ConfirmModalResult, DRAWER_BTN_H,
 };
 use crate::panels::editor::draw_readonly_hosts_viewer;
 use crate::panels::status_bar::{
@@ -132,28 +133,52 @@ pub fn draw_history_drawer(
         return HistoryResult::Closed;
     }
 
-    if show_side_drawer(
-        ctx,
-        "history_drawer",
-        Icon::History,
-        "系统 Hosts 历史",
-        "history_close",
-        layout::DRAWER_FOOTER_HEIGHT,
-        |ui, layout, footer| {
-            if footer {
-                match draw_footer(ui, state, config) {
-                    FooterAction::Close => result = HistoryResult::Closed,
-                    FooterAction::ConfigChanged => result = HistoryResult::ConfigChanged,
-                    FooterAction::None => {}
-                }
-            } else {
-                draw_history_body(ui, layout, state);
-            }
-        },
-    ) {
-        state.close();
-        result = HistoryResult::Closed;
-    }
+    let width = side_drawer_width(ctx);
+    let geom = side_drawer_geometry(ctx, width);
+    let drawer_w = geom.drawer_rect.width();
+
+    egui::Area::new(egui::Id::new("history_drawer"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(geom.area_rect.min)
+        .show(ctx, |ui| {
+            ui.set_min_size(geom.area_rect.size());
+            ui.set_max_size(geom.area_rect.size());
+
+            drawer_panel_frame(ctx)
+                .outer_margin(geom.shadow_margin)
+                .show(ui, |ui| {
+                    ui.set_width(drawer_w);
+                    ui.set_height(geom.drawer_rect.height());
+
+                    ui.vertical(|ui| {
+                        if draw_drawer_header(
+                            ui,
+                            Icon::History,
+                            "系统 Hosts 历史",
+                            "history_close",
+                        ) {
+                            state.close();
+                            result = HistoryResult::Closed;
+                        }
+
+                        let body_h =
+                            (ui.available_height() - layout::DRAWER_FOOTER_HEIGHT).max(0.0);
+                        let body_rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            Vec2::new(drawer_w, body_h),
+                        );
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
+                            draw_history_body(ui, drawer_w, body_h, state);
+                        });
+
+                        match draw_footer(ui, drawer_w, state, config) {
+                            FooterAction::Close => result = HistoryResult::Closed,
+                            FooterAction::ConfigChanged => result = HistoryResult::ConfigChanged,
+                            FooterAction::None => {}
+                        }
+                    });
+                });
+        });
 
     if let Some(delete_id) = state.pending_delete_id.clone() {
         match draw_confirm_modal(
@@ -205,24 +230,27 @@ pub fn draw_history_drawer(
     result
 }
 
+/// 对齐 `SideDrawer` footer `padding: md`：主体与 footer 之间留白。
+const BODY_BOTTOM_PAD: f32 = layout::DRAWER_PAD;
+
 /// 对齐 `History.tsx` → `HistoryList`：`Flex h="100%"` 左右同高面板。
-fn draw_history_body(ui: &mut Ui, layout: crate::panels::drawer::SideDrawerLayout, state: &mut HistoryState) {
-    let panel_h = layout.body_height;
-    let inner_w = layout.content_width;
+fn draw_history_body(ui: &mut Ui, drawer_w: f32, panel_h: f32, state: &mut HistoryState) {
+    let content_h = (panel_h - BODY_BOTTOM_PAD).max(0.0);
+    let inner_w = drawer_w - layout::DRAWER_PAD * 2.0;
     let viewer_w = (inner_w - HISTORY_LIST_WIDTH - HISTORY_PANEL_GAP).max(0.0);
 
     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
         ui.add_space(layout::DRAWER_PAD);
         let (viewer_rect, _) =
-            ui.allocate_exact_size(Vec2::new(viewer_w, panel_h), Sense::hover());
+            ui.allocate_exact_size(Vec2::new(viewer_w, content_h), Sense::hover());
         ui.scope_builder(egui::UiBuilder::new().max_rect(viewer_rect), |ui| {
-            draw_history_viewer_panel(ui, viewer_w, panel_h, state);
+            draw_history_viewer_panel(ui, viewer_w, content_h, state);
         });
         ui.add_space(HISTORY_PANEL_GAP);
         let (list_rect, _) =
-            ui.allocate_exact_size(Vec2::new(HISTORY_LIST_WIDTH, panel_h), Sense::hover());
+            ui.allocate_exact_size(Vec2::new(HISTORY_LIST_WIDTH, content_h), Sense::hover());
         ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
-            draw_history_list_panel(ui, HISTORY_LIST_WIDTH, panel_h, state);
+            draw_history_list_panel(ui, HISTORY_LIST_WIDTH, content_h, state);
         });
         ui.add_space(layout::DRAWER_PAD);
     });
@@ -430,26 +458,21 @@ enum FooterAction {
 
 fn draw_footer(
     ui: &mut Ui,
+    drawer_w: f32,
     state: &mut HistoryState,
     config: &mut AppConfig,
 ) -> FooterAction {
     let t = theme::app(ui.ctx());
     let mut action = FooterAction::None;
-    let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(drawer_w, layout::DRAWER_FOOTER_HEIGHT), Sense::hover());
 
     let row_top = drawer_footer_button_top(rect);
-    let half = (rect.width() - layout::DRAWER_PAD * 2.0) * 0.5;
-    let left = egui::Rect::from_min_size(
+    let row_rect = egui::Rect::from_min_max(
         egui::pos2(rect.left() + layout::DRAWER_PAD, row_top),
-        Vec2::new(half, DRAWER_BTN_H),
-    );
-    let right = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + layout::DRAWER_PAD + half, row_top),
-        Vec2::new(half, DRAWER_BTN_H),
+        egui::pos2(rect.right() - layout::DRAWER_PAD, row_top + DRAWER_BTN_H),
     );
 
-    ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(row_rect), |ui| {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new("历史记录上限")
@@ -485,24 +508,26 @@ fn draw_footer(
             );
             ui.add_space(4.0);
             draw_footer_help(ui);
-        });
-    });
 
-    ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if outline_button(ui, "关闭").clicked() {
-                state.close();
-                action = FooterAction::Close;
-            }
-            ui.add_space(12.0);
-            let can_delete = state.selected_id.is_some();
-            if outline_button_with_icon(ui, Icon::X, "删除", true, can_delete).clicked()
-                && can_delete
-            {
-                if let Some(id) = state.selected_id.clone() {
-                    state.pending_delete_id = Some(id);
-                }
-            }
+            ui.allocate_ui_with_layout(
+                Vec2::new(ui.available_width(), DRAWER_BTN_H),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    if outline_button(ui, "关闭").clicked() {
+                        state.close();
+                        action = FooterAction::Close;
+                    }
+                    ui.add_space(12.0);
+                    let can_delete = state.selected_id.is_some();
+                    if outline_button_with_icon(ui, Icon::X, "删除", true, can_delete).clicked()
+                        && can_delete
+                    {
+                        if let Some(id) = state.selected_id.clone() {
+                            state.pending_delete_id = Some(id);
+                        }
+                    }
+                },
+            );
         });
     });
 
