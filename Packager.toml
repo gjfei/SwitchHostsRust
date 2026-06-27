@@ -1,6 +1,7 @@
 # 打包配置（cargo-packager，由 xtask 读取）
 # macOS: .dmg；Windows: NSIS 安装包
 
+version = "0.0.1"
 out-dir = "dist"
 category = "DeveloperTool"
 copyright = "Copyright (c) switch-hosts-rust contributors"
