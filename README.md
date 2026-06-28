@@ -28,9 +28,18 @@ cargo run -p cli -- apply --system   # 写入系统 hosts
 ## GUI
 
 ```bash
-cargo run -p egui-app                              # Debug：写入 dev test.hosts
-cargo run -p egui-app -- --system                  # 写入系统 /etc/hosts
-cargo run --release -p egui-app                    # Release 默认写入系统 hosts
+cargo dev egui                                     # 单次运行（默认 Debug）
+cargo dev gpui
+cargo dev-watch egui                               # 热重载
+cargo dev egui -- --system                         # 传参给 app
+cargo list-apps                                    # 列出 app/ 下所有 app
+cargo dev gpui
+```
+
+macOS 开发时若需 Mission Control / Dock 正确图标（需 `Packager.toml` 已配置）：
+
+```bash
+cargo run-app-macos egui
 ```
 
 ### macOS 封装 `.dmg`
@@ -46,12 +55,6 @@ cargo package-macos --app egui-app
 
 # 仅 .app（开发调试，写入 target/packager/）
 cargo package-macos --app-only
-```
-
-macOS 开发时若需 Mission Control / Dock 正确图标：
-
-```bash
-cargo run-gui-macos
 ```
 
 ### Windows 封装 NSIS 安装包

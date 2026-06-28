@@ -145,11 +145,11 @@ fn platform_label(platform: &TargetPlatform) -> &'static str {
     }
 }
 
-pub fn open_app_bundle(release: bool) -> Result<()> {
+pub fn open_app_bundle(release: bool, package: &str) -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = release;
-        bail!("run-gui-macos 仅支持 macOS");
+        let _ = (release, package);
+        bail!("run-app-macos 仅支持 macOS");
     }
 
     #[cfg(target_os = "macos")]
@@ -162,7 +162,7 @@ pub fn open_app_bundle(release: bool) -> Result<()> {
         package_macos(PackageOptions {
             release,
             app_only: true,
-            apps: vec!["egui-app".into()],
+            apps: vec![package.into()],
             out_dir: Some(out_dir.clone()),
         })?;
 
@@ -170,8 +170,8 @@ pub fn open_app_bundle(release: bool) -> Result<()> {
         let app_spec = manifest
             .apps
             .iter()
-            .find(|a| a.name == "egui-app")
-            .context("Packager.toml 缺少 egui-app")?;
+            .find(|a| a.name == package)
+            .with_context(|| format!("Packager.toml 缺少 {package}"))?;
         let app = workspace_root()
             .join(out_dir)
             .join(format!("{}.app", app_spec.product_name));

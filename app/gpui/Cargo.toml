@@ -1,0 +1,22 @@
+[package]
+name = "gpui-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "SwitchHostsRust gpui desktop app"
+publish = false
+
+[[bin]]
+name = "switch-hosts-rust-gpui"
+path = "src/main.rs"
+
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["font-kit"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+anyhow.workspace = true
+ui-assets.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }

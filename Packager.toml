@@ -36,3 +36,22 @@ icons = [
     "crates/ui-assets/app-icons/128x128.png",
     "crates/ui-assets/app-icons/128x128@2x.png",
 ]
+
+[[apps]]
+name = "gpui-app"
+product-name = "SwitchHostsRust GPUI"
+cargo-package = "gpui-app"
+bin = "switch-hosts-rust-gpui"
+identifier = "app.switchhostsrust.gpui"
+description = "SwitchHostsRust GPUI prototype"
+long-description = """
+SwitchHostsRust GPUI is an experimental desktop shell built with GPUI.
+It is an unofficial, community-maintained project not affiliated with SwitchHosts.
+"""
+icons = [
+    "crates/ui-assets/app-icons/icon.icns",
+    "crates/ui-assets/app-icons/icon.ico",
+    "crates/ui-assets/app-icons/32x32.png",
+    "crates/ui-assets/app-icons/128x128.png",
+    "crates/ui-assets/app-icons/128x128@2x.png",
+]

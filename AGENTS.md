@@ -20,7 +20,7 @@ switch-hosts-rust/
 ├── crates/cli/       # CLI 二进制 switch-hosts-rust（default member）
 ├── app/egui/         # GUI：egui-app / switch-hosts-rust-gui
 ├── crates/ui-assets/ # 字体、Tabler 图标、应用位图
-├── crates/xtask/     # dev-gui、package-macos、sync-fonts 等 workspace 任务
+├── crates/xtask/     # dev/list-apps、package-macos、sync-fonts 等 workspace 任务
 ├── tests/fixtures/   # 集成测试共享数据
 ├── Packager.toml     # cargo-packager macOS/.app 配置
 └── docs/phases/      # 分阶段交付文档
@@ -39,13 +39,15 @@ cargo test --workspace
 cargo run -p cli -- list
 cargo run -p cli -- apply --system
 
-# GUI
-cargo run -p egui-app                              # Debug → dev test.hosts
-cargo run -p egui-app -- --system                 # 写入 /etc/hosts
-cargo run --release -p egui-app                   # Release → 系统 hosts
-make dev-gui                                       # 单次运行 GUI
-make dev-gui-watch                                 # cargo watch 热重载
-cargo run-gui-macos                                # macOS .app 启动（Dock 图标）
+# GUI（`<name>` 为 `app/<name>/` 目录名）
+cargo dev egui                                     # 单次运行
+cargo dev gpui
+cargo dev-watch egui                               # 热重载
+cargo dev egui -- --system                         # 传参给 app
+cargo run-app-macos egui                           # macOS .app（需 Packager.toml）
+cargo list-apps                                    # 列出 app/ 下所有 app
+cargo dev gpui                                     # 运行 gpui
+
 cargo sync-fonts / cargo sync-icons                # 资源同步
 
 # macOS .app / DMG（仅 app/ 下 crate，见 Packager.toml [[apps]]）
@@ -160,6 +162,8 @@ cargo test --workspace
 ## 常见任务指引
 
 **新增 GUI 面板：** 在 `panels/` 建模块 → `mod.rs` 导出 → `app.rs` 挂状态与 `draw_*` → 对照原版 TSX → 用 `theme.rs` token。
+
+**新增 app/ 桌面端：** 在 `app/<name>/` 建 crate 并加入 workspace members → `cargo dev <name>` 即可（按目录名自动发现，无需注册表）。
 
 **修改 hosts 写入：** `hosts_apply/` pipeline → `platform_write.rs` 平台分支 → 失败时 GUI 需回滚 UI 状态（见 `toggle_and_apply_hosts`）。
 
