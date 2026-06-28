@@ -11,6 +11,7 @@ use switch_hosts_core::storage::paths::AppPaths;
 use switch_hosts_core::storage::trashcan::{TrashItem, Trashcan};
 use switch_hosts_core::toggle::toggle_item;
 use eframe::egui;
+#[cfg(target_os = "macos")]
 use raw_window_handle::HasWindowHandle;
 
 use crate::config_effects::apply_config_side_effects;
@@ -145,6 +146,7 @@ impl SwitchHostsApp {
         };
         app.reload_editor();
         app.apply_config_effects(&cc.egui_ctx);
+        #[cfg(target_os = "macos")]
         app.sync_macos_traffic_lights(cc);
         app.sync_macos_dock_icon();
         app
@@ -228,9 +230,6 @@ impl SwitchHostsApp {
 
     #[cfg(not(target_os = "macos"))]
     fn sync_macos_dock_icon(&mut self) {}
-
-    #[cfg(not(target_os = "macos"))]
-    fn sync_macos_traffic_lights(&mut self, _handle: &impl HasWindowHandle) {}
 
     fn reload_editor(&mut self) {
         self.editor_revision = self.editor_revision.wrapping_add(1);
@@ -672,6 +671,7 @@ impl eframe::App for SwitchHostsApp {
         let ctx = ui.ctx().clone();
         let ctx = &ctx;
         self.sync_macos_dock_icon();
+        #[cfg(target_os = "macos")]
         self.sync_macos_traffic_lights(frame);
         self.poll_tray_events(ctx);
 
